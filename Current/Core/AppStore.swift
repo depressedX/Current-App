@@ -4,6 +4,7 @@ import Combine
 @MainActor
 final class AppStore: ObservableObject {
     static let shared = AppStore()
+    let pool: SongPoolStore
     let api: NetEaseAPI
     let player = PlaybackController()
     @Published private(set) var listener: Listener?
@@ -36,7 +37,19 @@ final class AppStore: ObservableObject {
     init() {
         let testing = ProcessInfo.processInfo.arguments.contains("-ui-testing")
         api = NetEaseAPI(ephemeral: testing)
+        let poolAPI = api
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Current")
+        let testPool = folder.appendingPathComponent("UITestSongPool")
+        if testing { try? FileManager.default.removeItem(at: testPool) }
+        pool = SongPoolStore(fileURL: testing ? testPool.appendingPathComponent("song-pool.json") : nil, resolve: { track in
+            if let index = track.demoIndex {
+                guard let url = Bundle.main.url(forResource: "demo-\(index)", withExtension: "wav") else { throw AnalysisError.noAudio }
+                return url
+            }
+            return try await poolAPI.playbackURL(id: track.id)
+        }, fetchBPM: { track in
+            try await poolAPI.songBPM(id: track.id)
+        }, semanticAnalyze: { try await DCLAPAnalyzer.analyze(url: $0) }, concepts: try? ConceptCatalog.bundled())
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         historyURL = folder.appendingPathComponent(testing ? "ui-test-listening.json" : "listening.json")
         if testing { try? FileManager.default.removeItem(at: historyURL) }
@@ -54,18 +67,23 @@ final class AppStore: ObservableObject {
     func restoreSession() async {
         guard !restored else { return }; restored = true
         guard api.hasCredentials else { return }
+        AppLog.shared.record(.auth, .started, operation: .restoreSession)
         restoring = true
         let ticket = accountEpoch
         defer { restoring = false }
         do {
             let user = try await api.profile()
             guard ticket == accountEpoch else { return }
-            listener = user; await loadPlaylists()
+            listener = user
+            AppLog.shared.record(.auth, .succeeded, operation: .restoreSession)
+            await loadPlaylists()
         } catch CurrentError.expired {
             guard ticket == accountEpoch else { return }
+            AppLog.shared.record(.auth, .failed, level: .warning, operation: .restoreSession, error: CurrentError.expired)
             api.clear(); self.error = CurrentError.expired.localizedDescription
         } catch {
             guard ticket == accountEpoch else { return }
+            AppLog.shared.record(.auth, .failed, level: .error, operation: .restoreSession, error: error)
             self.error = "暂时无法恢复账号，登录状态已保留。可在我的页面重试。"
         }
     }
@@ -75,18 +93,22 @@ final class AppStore: ObservableObject {
         let user = try await api.profile()
         guard ticket == accountEpoch else { throw CancellationError() }
         resetPlayback(); demoMode = false; listener = user
+        AppLog.shared.record(.auth, .succeeded, operation: .login)
         await loadPlaylists()
     }
     func enterDemo() {
         guard listener == nil else { return }
+        AppLog.shared.record(.auth, .succeeded, operation: .demo)
         demoMode = true; error = nil
     }
     func signOut() async {
+        AppLog.shared.record(.auth, .started, operation: .logout)
         accountEpoch = UUID(); generationTask?.cancel(); playbackTask?.cancel()
         resetPlayback(); listener = nil; demoMode = false
         playlists = []; libraryTracks = []; selectedPlaylistID = nil
         libraryLoading = false; error = nil
         await api.logout()
+        AppLog.shared.record(.auth, .succeeded, operation: .logout)
         if listener == nil && !demoMode { message = "已退出，登录凭据已从本机移除。" }
     }
     func loadPlaylists() async {
@@ -110,27 +132,18 @@ final class AppStore: ObservableObject {
         guard listener != nil || demoMode else { error = "先连接网易云，或进入演示空间。"; return }
         generating = true; error = nil
         let ticket = accountEpoch
-        let playlistID = selectedPlaylistID
         generationTask = Task {
             defer { if ticket == accountEpoch { generating = false } }
             do {
-                let tracks: [Track]
-                if listener != nil {
-                    guard let playlistID else { throw CurrentError.message("还没有可用歌单，请先在音乐库刷新或选择一个歌单。") }
-                    tracks = try await api.tracks(playlistID: playlistID)
-                } else {
-                    try await Task.sleep(for: .milliseconds(450))
-                    tracks = DemoCatalog.tracks
-                }
+                let matching = try await pool.mockSemanticQueue(text: text)
                 try Task.checkCancellation()
                 guard ticket == accountEpoch else { return }
-                let result = QueueComposer.compose(catalog: tracks)
-                guard !result.isEmpty else { throw CurrentError.message("这个歌单暂无歌曲，请换一个歌单。") }
-                libraryTracks = tracks
+                let result = matching.tracks
+                guard !result.isEmpty else { throw CurrentError.message("歌曲池中还没有可推荐的听感结果。") }
                 activePrompt = text; queue = result; currentIndex = 0
                 sessions.insert(ListeningSession(prompt: text, tracks: result, createdAt: Date(), listenerID: scope), at: 0)
                 sessions = Array(sessions.prefix(30)); persist()
-                message = "已为此刻准备 \(result.count) 首歌。"
+                message = "模拟意图：\(matching.anchor) · 已匹配 \(result.count) 首。文本理解尚未接入。"
                 play(at: 0)
             } catch is CancellationError {} catch {
                 if ticket == accountEpoch { self.error = error.localizedDescription }
@@ -192,6 +205,8 @@ final class AppStore: ObservableObject {
         do {
             let data = try JSONEncoder().encode(Archive(sessions: sessions, feedback: feedback))
             try data.write(to: historyURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        } catch { self.error = "记录保存失败：\(error.localizedDescription)" }
+        } catch {
+            AppLog.shared.record(.storage, .failed, level: .error, operation: .historySave, error: error)
+            self.error = "记录保存失败：\(error.localizedDescription)" }
     }
 }

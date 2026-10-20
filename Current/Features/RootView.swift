@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab = 0
     @State private var showPlayer = false
@@ -15,6 +16,21 @@ struct RootView: View {
             NavigationStack { ProfileView(showLogin: $showLogin) }
                 .tabItem { Label("我的", systemImage: "person") }.tag(2)
         }
+        .environmentObject(store.pool)
+        .onAppear {
+            store.pool.activate(account: store.listener.map { "netease:\($0.id)" } ?? "demo")
+            store.pool.setForeground(scenePhase == .active)
+            store.pool.setPlaybackBusy(store.player.playing || store.player.loading)
+        }
+        .onChange(of: store.scope) { _, value in
+            store.pool.activate(account: value.map { "netease:\($0)" } ?? "demo")
+        }
+        .onChange(of: scenePhase) { _, value in
+            AppLog.shared.record(.app, .stateChanged, operation: .scene,
+                                 reason: value == .active ? .active : value == .background ? .background : .inactive)
+            store.pool.setForeground(value == .active)
+        }
+        .onChange(of: store.player.playing || store.player.loading) { _, value in store.pool.setPlaybackBusy(value) }
         .toolbarBackground(CurrentTheme.background, for: .tabBar)
         .overlay(alignment: .bottom) {
             if let track = store.currentTrack {
@@ -105,7 +121,7 @@ struct ListenView: View {
                         .foregroundStyle(CurrentTheme.muted).accessibilityIdentifier("enterDemo")
                 }.font(CurrentTheme.TypeScale.body).buttonStyle(CurrentPressStyle())
             } else {
-                Text(store.demoMode ? "演示模式 · 随机选歌" : "当前为随机选歌")
+                Text("模拟意图 · 按歌曲池听感匹配，尚未理解文本")
                     .font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
             }
             VStack(alignment: .leading, spacing: CurrentTheme.Space.row) {

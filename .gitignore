@@ -4,3 +4,8 @@ DerivedData/
 xcuserdata/
 .DS_Store
 Config/Signing.local.xcconfig
+
+# PC-only text model and isolated Python environment. Never bundle these.
+Tools/PCPrecompute/.cache/
+Tools/PCPrecompute/.venv/
+**/__pycache__/

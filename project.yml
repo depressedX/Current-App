@@ -14,11 +14,23 @@ settings:
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+packages:
+  ONNXRuntime:
+    url: https://github.com/microsoft/onnxruntime-swift-package-manager
+    exactVersion: 1.24.2
 targets:
   Current:
     type: application
     platform: iOS
-    sources: [Current]
+    sources:
+      - path: Current
+        excludes: [Resources/Semantics]
+      - path: Current/Resources/Semantics
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: ONNXRuntime
+        product: onnxruntime
     info:
       path: Config/Info.plist
       properties:
@@ -37,7 +49,15 @@ targets:
   CurrentCarPlay:
     type: application
     platform: iOS
-    sources: [Current]
+    sources:
+      - path: Current
+        excludes: [Resources/Semantics]
+      - path: Current/Resources/Semantics
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: ONNXRuntime
+        product: onnxruntime
     info:
       path: Config/CarPlay-Info.plist
       properties:

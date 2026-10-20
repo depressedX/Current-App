@@ -1,0 +1,9 @@
+DCLAP audio model_epoch_36 v1 and paired text-derived concept vectors:
+https://github.com/NeptuneHub/AudioMuse-AI-DCLAP
+Repository license: AGPL-3.0; see DCLAP-LICENSE.txt.
+Model graph/weights hashes and source URLs: model-manifest.json.
+The paired text encoder is used only on the developer PC, not bundled with this app.
+
+Microsoft ONNX Runtime / native Swift package 1.24.2:
+https://github.com/microsoft/onnxruntime-swift-package-manager
+MIT license; see ONNX-Runtime-LICENSE.txt and upstream third-party notices.

@@ -41,3 +41,13 @@ enum CurrentError: LocalizedError {
         }
     }
 }
+
+
+extension CurrentError: SafeLogError {
+    var logFailure: LogFailure {
+        switch self {
+        case .expired: return .authExpired
+        case .message: return .application
+        }
+    }
+}

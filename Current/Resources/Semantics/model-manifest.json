@@ -1,0 +1,19 @@
+{
+  "spaceID": "dclap-epoch36-text-v1-slaney48k-v1",
+  "assets": [
+    {
+      "name": "model_epoch_36.onnx",
+      "size": 1243778,
+      "url": "https://github.com/NeptuneHub/AudioMuse-AI-DCLAP/releases/download/v1/model_epoch_36.onnx",
+      "sha256": "17860403f8fc90aff8ac0632a0741eb5e58d8c0b0ad2fce5ced967274b0ea971",
+      "verified_sha256": "17860403f8fc90aff8ac0632a0741eb5e58d8c0b0ad2fce5ced967274b0ea971"
+    },
+    {
+      "name": "model_epoch_36.onnx.data",
+      "size": 21168128,
+      "url": "https://github.com/NeptuneHub/AudioMuse-AI-DCLAP/releases/download/v1/model_epoch_36.onnx.data",
+      "sha256": "2a735b23c2aad7b12d9ffc85334cebcc659c07696d2ff60e2e378da28b6df657",
+      "verified_sha256": "2a735b23c2aad7b12d9ffc85334cebcc659c07696d2ff60e2e378da28b6df657"
+    }
+  ]
+}

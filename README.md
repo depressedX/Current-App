@@ -24,7 +24,19 @@ Current scheme 允许在 Apple Silicon Mac 上选择 **My Mac (Designed for iPho
 - 本机保存最近队列和反馈，按账号隔离。不会修改网易云收藏。
 - 未登录可体验 8 首原创合成短音频；演示和真实账号明确分开。
 
-**尚无推荐算法、语义理解、BPM 分析或情绪模型。输入文本只命名本次听歌意图，不影响随机选择。**
+- 「我的 → 歌曲池」：整单／单曲加入，串行基础分析、暂停继续、失败重试与结果详情。
+
+**尚无推荐算法、语义理解或情绪模型。歌曲池已支持原生 BPM 等基础声学测量，但尚不参与推荐；文本仍不影响随机选择。**
+
+## 歌曲分析
+
+「我的 → 歌曲池 → + → 选择歌单 → 全部加入／单曲 +」，返回歌曲池点「继续分析」。演示空间可直接分析原创短音频。
+
+当前只测量 BPM、周期强度、电平、动态分布和过零率；风格、浪漫、朦胧等维度明确显示待接入模型。分析与日常推荐队列分开，播放／后台／节能／过热时让路。
+
+[开源调研](docs/07-analysis-research.md) · [分析方案与 iPhone 12 验收门槛](docs/08-song-analysis-pipeline.md)
+
+无需模拟器运行分析检查：`zsh Scripts/check-analysis.sh`。
 
 ## CarPlay
 
@@ -49,3 +61,7 @@ xcodebuild -project Current.xcodeproj -scheme CurrentCarPlay -sdk iphonesimulato
 - [架构与参考](docs/02-architecture.md)
 - [调研资料](docs/03-research.md)
 - [验证记录](docs/04-validation.md)
+
+## 真机排障
+
+「我的 → 诊断日志」可查看、筛选、准备导出并手动分享日志。复现后导出即可，不需要连接 Xcode；日志不包含凭据、歌曲名、听歌需求或签名 URL。见 [日志方案](docs/09-diagnostic-logging.md)。

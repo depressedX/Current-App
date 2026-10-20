@@ -10,6 +10,8 @@
 | Core/AppStore | 账号隔离、异步请求生命周期、队列、反馈、本机历史 |
 | Core/PlaybackController | AVPlayer、音频会话、中断、进度、系统媒体控制 |
 | Core/Models | 歌曲、听歌意图、反馈、随机队列生成器 |
+| Diagnostics | 分类 OSLog、串行滚动文件、任务关联与手动导出 |
+| Analysis | 独立歌曲池、串行任务、原生声学测量、账号隔离与结果持久化 |
 | Design | 色彩、抽象封面、按钮 |
 | Features | 此刻、音乐库、我的、登录、完整播放器、反馈 |
 | CarPlay | CPListTemplate / CPTabBarTemplate / CPNowPlayingTemplate |
@@ -50,3 +52,5 @@ CurrentCarPlay 配置声明音频 entitlement 与 CarPlay scene；Current 配置
 - https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.carplay-audio
 - https://developer.apple.com/documentation/mediaplayer/mpremotecommandcenter
 - https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/blob/main/util/crypto.js
+
+歌曲分析不复用播放队列或音频会话；完整链路见 [歌曲池方案](08-song-analysis-pipeline.md)。

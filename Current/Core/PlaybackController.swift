@@ -47,6 +47,7 @@ final class PlaybackController: ObservableObject {
             let options = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             Task { @MainActor in
                 guard let self else { return }
+                AppLog.shared.record(.playback, .interrupted, operation: .audioSession, status: type.map { Int($0) })
                 if type == AVAudioSession.InterruptionType.began.rawValue {
                     self.shouldResume = self.playing; self.pause()
                 } else if self.shouldResume && AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
@@ -56,7 +57,10 @@ final class PlaybackController: ObservableObject {
         }
         routeChanges = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             if note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue {
-                Task { @MainActor in self?.pause() }
+                Task { @MainActor in
+                    AppLog.shared.record(.playback, .routeChanged, operation: .audioSession)
+                    self?.pause()
+                }
             }
         }
         let commands = MPRemoteCommandCenter.shared()
@@ -74,6 +78,7 @@ final class PlaybackController: ObservableObject {
     }
     func load(_ song: Track, api: NetEaseAPI) async {
         let ticket = UUID(); generation = ticket
+        AppLog.shared.record(.playback, .started, operation: .playback, span: ticket)
         player.pause(); player.replaceCurrentItem(with: nil)
         statusObservation = nil; error = nil; loading = true; playing = false
         track = song; position = 0; duration = song.duration
@@ -95,27 +100,37 @@ final class PlaybackController: ObservableObject {
                 Task { @MainActor in
                     guard let self, ticket == self.generation else { return }
                     if item.status == .readyToPlay {
+                        AppLog.shared.record(.playback, .ready, operation: .playback, span: ticket)
                         self.loading = false
                         if item.duration.seconds.isFinite { self.duration = item.duration.seconds }
                     } else if item.status == .failed {
+                        AppLog.shared.record(.playback, .failed, level: .error, operation: .playback, span: ticket, error: item.error)
                         self.loading = false; self.error = "音频加载失败，请重试或换一首。"
                     }
                 }
             }
             player.replaceCurrentItem(with: item); player.play()
         } catch is CancellationError {
+            AppLog.shared.record(.playback, .cancelled, operation: .playback, span: ticket)
             if ticket == generation { loading = false }
         } catch {
             guard ticket == generation else { return }
+            AppLog.shared.record(.playback, .failed, level: .error, operation: .playback, span: ticket, error: error)
             loading = false; self.error = error.localizedDescription
         }
     }
     func toggle() { playing ? pause() : resume() }
-    func pause() { player.pause(); playing = false; publishNowPlaying() }
+    func pause() {
+        AppLog.shared.record(.playback, .paused, operation: .playback, span: generation)
+        player.pause(); playing = false; publishNowPlaying() }
     func resume() {
         guard track != nil, player.currentItem != nil, error == nil else { return }
+        AppLog.shared.record(.playback, .resumed, operation: .playback, span: generation)
         do { try AVAudioSession.sharedInstance().setActive(true); player.play() }
-        catch { self.error = error.localizedDescription }
+        catch {
+            AppLog.shared.record(.playback, .failed, level: .error, operation: .audioSession, error: error)
+            self.error = error.localizedDescription
+        }
     }
     func seek(_ time: Double) {
         player.seek(to: CMTime(seconds: max(0, min(time, duration)), preferredTimescale: 600))

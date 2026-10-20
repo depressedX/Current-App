@@ -12,7 +12,6 @@ struct LibraryView: View {
                     Button("刷新") { Task { await store.loadPlaylists() } }
                         .font(CurrentTheme.TypeScale.body).disabled(store.libraryLoading)
                 }
-                Text("选择选歌范围").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                 if store.libraryLoading { ProgressView("正在加载…").font(CurrentTheme.TypeScale.secondary) }
                 if store.playlists.isEmpty && !store.libraryLoading {
                     Text("暂无歌单，下拉刷新试试。")
@@ -20,26 +19,15 @@ struct LibraryView: View {
                 }
                 LazyVStack(spacing: CurrentTheme.Space.tiny) {
                     ForEach(store.playlists) { playlist in
-                        Button { store.selectedPlaylistID = playlist.id } label: {
-                            HStack(spacing: CurrentTheme.Space.row) {
-                                ZStack {
-                                    CurrentTheme.gradient(playlist.id)
-                                    if let url = playlist.artwork {
-                                        AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.clear }
-                                    }
-                                }.frame(width: 56, height: 56)
-                                    .clipShape(RoundedRectangle(cornerRadius: CurrentTheme.Radius.standard))
-                                VStack(alignment: .leading, spacing: CurrentTheme.Space.tiny) {
-                                    Text(playlist.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary).lineLimit(2)
-                                    Text("\(playlist.count) 首").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                                }
-                                Spacer()
-                                if store.selectedPlaylistID == playlist.id {
-                                    Image(systemName: "checkmark").font(CurrentTheme.Icon.selection).foregroundStyle(CurrentTheme.accent)
-                                }
-                            }.padding(8).contentShape(Rectangle())
-                        }.buttonStyle(CurrentRowStyle())
-                            .accessibilityAddTraits(store.selectedPlaylistID == playlist.id ? .isSelected : [])
+                        HStack(spacing: CurrentTheme.Space.row) {
+                            PlaylistArtwork(url: playlist.artwork)
+                                .frame(width: 56, height: 56)
+                            VStack(alignment: .leading, spacing: CurrentTheme.Space.tiny) {
+                                Text(playlist.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary).lineLimit(2)
+                                Text("\(playlist.count) 首").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                            }
+                            Spacer()
+                        }.padding(8).contentShape(Rectangle())
                     }
                 }
             } else if store.demoMode {
@@ -108,6 +96,17 @@ struct ProfileView: View {
                     if !store.demoMode { Button("先体验一下") { store.enterDemo() } }
                 }.font(CurrentTheme.TypeScale.secondary)
             }
+            if store.listener != nil || store.demoMode {
+                Divider()
+                NavigationLink { SongPoolView() } label: {
+                    HStack {
+                        Text("歌曲池").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
+                        Spacer()
+                        Text("管理分析").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                        Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
+                    }.frame(minHeight: 44)
+                }
+            }
             Divider()
             VStack(alignment: .leading, spacing: CurrentTheme.Space.group) {
                 Text("最近听过").font(CurrentTheme.TypeScale.section)
@@ -146,6 +145,12 @@ struct ProfileView: View {
                 NavigationLink { AboutView() } label: {
                     HStack {
                         Text("关于 Current").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
+                        Spacer(); Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
+                    }
+                }
+                NavigationLink { DiagnosticsView() } label: {
+                    HStack {
+                        Text("诊断日志").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
                         Spacer(); Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
                     }
                 }

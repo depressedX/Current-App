@@ -42,17 +42,31 @@ final class NetEaseAPI {
         return (body["playlist"] as? [[String: Any]] ?? []).compactMap { p in
             guard let id = p["id"] as? Int else { return nil }
             return UserPlaylist(id: id, title: p["name"] as? String ?? "歌单", count: p["trackCount"] as? Int ?? 0,
-                                artwork: (p["coverImgUrl"] as? String).flatMap(URL.init))
+                                artwork: Self.artworkURL(p["coverImgUrl"] as? String ?? p["picUrl"] as? String))
         }
     }
-    func tracks(playlistID: Int) async throws -> [Track] {
+    func tracks(playlistID: Int, limit: Int? = 60) async throws -> [Track] {
         let body = try await request("/v6/playlist/detail", ["id": playlistID, "n": 100, "s": 0])
         let playlist = body["playlist"] as? [String: Any] ?? [:]
         let refs = playlist["trackIds"] as? [[String: Any]] ?? []
-        let ids = refs.prefix(60).compactMap { $0["id"] as? Int }
+        let allIDs = refs.compactMap { $0["id"] as? Int }
+        let ids = limit.map { Array(allIDs.prefix(max(0, $0))) } ?? allIDs
         if ids.isEmpty { return Self.parseTracks(playlist["tracks"] as? [[String: Any]] ?? []) }
-        let detail = try await request("/v3/song/detail", ["c": String(data: try JSONSerialization.data(withJSONObject: ids.map { ["id": $0] }), encoding: .utf8)!])
-        return Self.parseTracks(detail["songs"] as? [[String: Any]] ?? [])
+        var tracks: [Track] = []
+        for start in stride(from: 0, to: ids.count, by: 100) {
+            try Task.checkCancellation()
+            let batch = Array(ids[start..<min(start + 100, ids.count)])
+            let detail = try await request("/v3/song/detail", ["c": String(data: try JSONSerialization.data(withJSONObject: batch.map { ["id": $0] }), encoding: .utf8)!])
+            tracks.append(contentsOf: Self.parseTracks(detail["songs"] as? [[String: Any]] ?? []))
+        }
+        return tracks
+    }
+
+    nonisolated static func artworkURL(_ text: String?) -> URL? {
+        guard let text, var parts = URLComponents(string: text), parts.host != nil else { return nil }
+        if parts.scheme?.lowercased() == "http" { parts.scheme = "https" }
+        guard parts.scheme?.lowercased() == "https" else { return nil }
+        return parts.url
     }
     static func parseTracks(_ values: [[String: Any]]) -> [Track] {
         values.compactMap { song in
@@ -61,9 +75,33 @@ final class NetEaseAPI {
             let artists = song["ar"] as? [[String: Any]] ?? []
             return Track(id: id, title: song["name"] as? String ?? "未知歌曲",
                          artist: artists.compactMap { $0["name"] as? String }.joined(separator: " / "),
-                         album: album["name"] as? String ?? "", artwork: (album["picUrl"] as? String).flatMap(URL.init),
+                         album: album["name"] as? String ?? "", artwork: Self.artworkURL(album["picUrl"] as? String),
                          duration: ((song["dt"] as? NSNumber)?.doubleValue ?? 0) / 1000, demoIndex: nil)
         }
+    }
+    func songBPM(id: Int) async throws -> Double? {
+        let body = try await request("/song/play/about/block/page", ["songId": id], eapi: true, timeout: 8)
+        return Self.parseWikiBPM(body)
+    }
+    nonisolated static func parseWikiBPM(_ body: [String: Any]) -> Double? {
+        guard let data = body["data"] as? [String: Any], let blocks = data["blocks"] as? [[String: Any]] else { return nil }
+        for block in blocks {
+            for creative in block["creatives"] as? [[String: Any]] ?? [] {
+                let ui = creative["uiElement"] as? [String: Any] ?? [:]
+                let title = (ui["mainTitle"] as? [String: Any])?["title"] as? String ?? ""
+                let kind = creative["creativeType"] as? String ?? ""
+                guard kind.lowercased() == "bpm" || title.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "BPM" else { continue }
+                for link in ui["textLinks"] as? [[String: Any]] ?? [] {
+                    guard let text = link["text"] as? String else { continue }
+                    let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard value.range(of: #"^\d{1,3}(?:\.\d{1,2})?\s*(?:BPM)?$"#, options: [.regularExpression, .caseInsensitive]) != nil else { continue }
+                    let numeric = value.replacingOccurrences(of: "BPM", with: "", options: .caseInsensitive)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let bpm = Double(numeric), bpm.isFinite, (20...400).contains(bpm) { return bpm }
+                }
+            }
+        }
+        return nil
     }
     func playbackURL(id: Int) async throws -> URL {
         let body = try await request("/song/enhance/player/url/v1", ["ids": "[\(id)]", "level": "standard", "encodeType": "aac"], eapi: true)
@@ -79,51 +117,67 @@ final class NetEaseAPI {
         return url
     }
     func request(_ path: String, _ payload: [String: Any] = [:], eapi: Bool = false,
-                 accepted: Set<Int> = [200], cookieOverride: [String: String]? = nil, absorb: Bool = true) async throws -> [String: Any] {
-        let generation = epoch
-        var body = payload
-        let jar = cookieOverride ?? cookies
-        body["csrf_token"] = jar["__csrf"] ?? ""
-        if eapi {
-            var header = jar
-            header["os"] = "pc"; header["appver"] = "3.1.17"
-            body["header"] = header
-        }
-        let json = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
-        let fields = try eapi ? NetEaseCrypto.eapi(path: path, payload: json) : NetEaseCrypto.weapi(json)
-        let host = eapi ? "https://interface.music.163.com/eapi" : "https://music.163.com/weapi"
-        let url = URL(string: host + path)!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"; request.httpBody = NetEaseCrypto.form(fields)
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
-        var requestCookies = jar
-        requestCookies["os"] = "pc"; requestCookies["appver"] = "3.1.17"
-        request.setValue(requestCookies.map { "\($0.key)=\($0.value)" }.joined(separator: "; "), forHTTPHeaderField: "Cookie")
-        let (data, response) = try await session.data(for: request)
-        try Task.checkCancellation()
-        guard generation == epoch else { throw CancellationError() }
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw CurrentError.message("网易云服务暂不可用，请稍后重试。")
-        }
-        guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw CurrentError.message("服务返回了无法识别的数据。")
-        }
-        let code = value["code"] as? Int ?? 200
-        if code == 301 { throw CurrentError.expired }
-        guard accepted.contains(code) else {
-            throw CurrentError.message(value["message"] as? String ?? value["msg"] as? String ?? "请求失败（\(code)）。")
-        }
-        if absorb {
-            let headers = http.allHeaderFields.reduce(into: [String: String]()) { result, pair in
-                result[String(describing: pair.key)] = String(describing: pair.value)
+                 accepted: Set<Int> = [200], cookieOverride: [String: String]? = nil, absorb: Bool = true, timeout: TimeInterval? = nil) async throws -> [String: Any] {
+        let span = UUID(), began = Date(), operation = LogOperation.api(path)
+        var transportStatus: Int?, businessCode: Int?
+        AppLog.shared.record(.api, .started, operation: operation, span: span)
+        do {
+            let generation = epoch
+            var body = payload
+            let jar = cookieOverride ?? cookies
+            body["csrf_token"] = jar["__csrf"] ?? ""
+            if eapi {
+                var header = jar
+                header["os"] = "pc"; header["appver"] = "3.1.17"
+                body["header"] = header
             }
-            for cookie in HTTPCookie.cookies(withResponseHeaderFields: headers, for: url) {
-                if !cookie.value.isEmpty { cookies[cookie.name] = cookie.value }
+            let json = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+            let fields = try eapi ? NetEaseCrypto.eapi(path: path, payload: json) : NetEaseCrypto.weapi(json)
+            let host = eapi ? "https://interface.music.163.com/eapi" : "https://music.163.com/weapi"
+            let url = URL(string: host + path)!
+            var request = URLRequest(url: url)
+            if let timeout { request.timeoutInterval = timeout }
+            request.httpMethod = "POST"; request.httpBody = NetEaseCrypto.form(fields)
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+            var requestCookies = jar
+            requestCookies["os"] = "pc"; requestCookies["appver"] = "3.1.17"
+            request.setValue(requestCookies.map { "\($0.key)=\($0.value)" }.joined(separator: "; "), forHTTPHeaderField: "Cookie")
+            let (data, response) = try await session.data(for: request)
+            try Task.checkCancellation()
+            guard generation == epoch else { throw CancellationError() }
+            transportStatus = (response as? HTTPURLResponse)?.statusCode
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw CurrentError.message("网易云服务暂不可用，请稍后重试。")
             }
-            if !ephemeral, cookies["MUSIC_U"] != nil { try KeychainStore.save(cookies) }
+            guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw CurrentError.message("服务返回了无法识别的数据。")
+            }
+            let code = value["code"] as? Int ?? 200
+            businessCode = code
+            if code == 301 { throw CurrentError.expired }
+            guard accepted.contains(code) else {
+                throw CurrentError.message(value["message"] as? String ?? value["msg"] as? String ?? "请求失败（\(code)）。")
+            }
+            if absorb {
+                let headers = http.allHeaderFields.reduce(into: [String: String]()) { result, pair in
+                    result[String(describing: pair.key)] = String(describing: pair.value)
+                }
+                for cookie in HTTPCookie.cookies(withResponseHeaderFields: headers, for: url) {
+                    if !cookie.value.isEmpty { cookies[cookie.name] = cookie.value }
+                }
+                if !ephemeral, cookies["MUSIC_U"] != nil { try KeychainStore.save(cookies) }
+            }
+            AppLog.shared.record(.api, .succeeded, operation: operation, span: span,
+                                 status: transportStatus, serviceCode: businessCode, elapsed: Date().timeIntervalSince(began))
+            return value
+        } catch {
+            let cancelled = error is CancellationError || Task.isCancelled
+            AppLog.shared.record(.api, cancelled ? .cancelled : .failed, level: cancelled ? .info : .error,
+                                 operation: operation, span: span, status: transportStatus, serviceCode: businessCode,
+                                 elapsed: Date().timeIntervalSince(began), error: error)
+            throw error
         }
-        return value
     }
 }

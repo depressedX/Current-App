@@ -1,0 +1,149 @@
+{
+  "version": "listening-concepts-v1",
+  "concepts": [
+    {
+      "id": "mellow",
+      "label": "舒缓",
+      "definition": "放松、温和、没有强烈推进感",
+      "prompts": [
+        "Soft, mellow and relaxing music.",
+        "Gentle soothing music with a calm atmosphere."
+      ]
+    },
+    {
+      "id": "energetic",
+      "label": "激烈",
+      "definition": "强烈的推进感和演奏力度",
+      "prompts": [
+        "Intense, energetic and powerful music.",
+        "High energy music with a driving rhythm."
+      ]
+    },
+    {
+      "id": "cheerful",
+      "label": "快乐",
+      "definition": "明朗、轻快、愉悦",
+      "prompts": [
+        "Happy, cheerful and uplifting music.",
+        "Bright playful music with a joyful mood."
+      ]
+    },
+    {
+      "id": "melancholic",
+      "label": "阴郁",
+      "definition": "低落、忧郁、沉静的情绪",
+      "prompts": [
+        "Melancholic, sad and introspective music.",
+        "Dark moody music with a somber atmosphere."
+      ]
+    },
+    {
+      "id": "romantic",
+      "label": "浪漫",
+      "definition": "亲密、柔情、温暖的情绪",
+      "prompts": [
+        "Romantic and intimate music with a tender mood.",
+        "Sensual warm music for an intimate atmosphere."
+      ]
+    },
+    {
+      "id": "dreamy",
+      "label": "朦胧",
+      "definition": "梦境感、柔焦和漂浮感",
+      "prompts": [
+        "Dreamy hazy music with an ethereal atmosphere.",
+        "Soft atmospheric music with a floating dreamlike sound."
+      ]
+    },
+    {
+      "id": "warm",
+      "label": "温暖",
+      "definition": "柔和、亲切、温润的音色",
+      "prompts": [
+        "Warm cozy music with a comforting tone.",
+        "Mellow intimate music with warm rich textures."
+      ]
+    },
+    {
+      "id": "groovy",
+      "label": "律动",
+      "definition": "让身体跟随节拍摆动的感觉",
+      "prompts": [
+        "Groovy rhythmic music with a danceable beat.",
+        "Music with a steady funky groove and rhythmic pulse."
+      ]
+    },
+    {
+      "id": "spacious",
+      "label": "空间感",
+      "definition": "宽阔、混响和声场延伸",
+      "prompts": [
+        "Spacious atmospheric music with lush reverberation.",
+        "Wide open music with an expansive ambient sound."
+      ]
+    },
+    {
+      "id": "acoustic",
+      "label": "原声质感",
+      "definition": "原声乐器和自然的演奏感",
+      "prompts": [
+        "Acoustic music with natural instruments.",
+        "Music with acoustic guitar and organic instrumental textures."
+      ]
+    },
+    {
+      "id": "electronic",
+      "label": "电子质感",
+      "definition": "合成器和电子音色",
+      "prompts": [
+        "Electronic music with synthesizers and electronic beats.",
+        "Music with synthetic textures and programmed drums."
+      ]
+    },
+    {
+      "id": "instrumental",
+      "label": "纯器乐",
+      "definition": "没有明显的人声演唱",
+      "prompts": [
+        "Instrumental music without singing or vocals.",
+        "Music performed by instruments with no human voice."
+      ]
+    },
+    {
+      "id": "vocal",
+      "label": "人声突出",
+      "definition": "清晰突出的人声主导",
+      "prompts": [
+        "Vocal music with a prominent lead singer.",
+        "A clear singing voice in the foreground of the music."
+      ]
+    },
+    {
+      "id": "rock",
+      "label": "摇滚",
+      "definition": "摇滚乐器编制和演奏风格",
+      "prompts": [
+        "Rock music with electric guitars, bass and drums.",
+        "A rock band playing amplified guitar driven music."
+      ]
+    },
+    {
+      "id": "house",
+      "label": "House",
+      "definition": "House 的节奏与电子舞曲风格",
+      "prompts": [
+        "House music with a four on the floor dance beat.",
+        "Deep house music with a steady electronic dance groove."
+      ]
+    },
+    {
+      "id": "sparse",
+      "label": "疏朗",
+      "definition": "编配简单、留白较多",
+      "prompts": [
+        "Sparse minimal music with only a few instruments.",
+        "Uncluttered delicate music with space between the notes."
+      ]
+    }
+  ]
+}

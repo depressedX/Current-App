@@ -39,6 +39,9 @@ struct HostCoreChecks {
         let track = NetEaseAPI.parseTracks([["id": 42, "name": "Test", "dt": 180000,
                                             "ar": [["name": "A"], ["name": "B"]], "al": ["name": "Album"]]]).first!
         precondition(track.duration == 180 && track.artist == "A / B" && !track.isDemo)
+        precondition(NetEaseAPI.artworkURL("http://p1.music.126.net/cover.jpg?param=168y168")?.absoluteString == "https://p1.music.126.net/cover.jpg?param=168y168")
+        precondition(NetEaseAPI.artworkURL(nil) == nil)
+        precondition(NetEaseAPI.artworkURL("file:///tmp/cover.jpg") == nil)
         print("PASS response mapping preserves milliseconds, artist names and real/demo identity")
         let encoded = String(decoding: NetEaseCrypto.form(["params": "a+b/c="]), as: UTF8.self)
         precondition(encoded.contains("%2B"))
@@ -79,6 +82,28 @@ struct HostCoreChecks {
         do { _ = try await api.playbackURL(id: 42); fatalError("missing URL must fail") }
         catch CurrentError.message {}
         print("PASS trial-only/missing audio is rejected; valid HTTP audio is upgraded to HTTPS")
+        func wiki(_ text: String, kind: String = "bpm", title: String = "BPM") -> [String: Any] {
+            ["code": 200, "data": ["blocks": [["creatives": [["creativeType": kind,
+                "uiElement": ["mainTitle": ["title": title], "textLinks": [["text": text]]]]]]]]]
+        }
+        precondition(NetEaseAPI.parseWikiBPM(wiki("63")) == 63)
+        precondition(NetEaseAPI.parseWikiBPM(wiki(" 127.5 BPM ")) == 127.5)
+        precondition(NetEaseAPI.parseWikiBPM(wiki("63", kind: "other", title: "BPM")) == 63)
+        for value in ["", "未知", "0", "2011", "NaN", "63 / 126", "https://example.com/63"] {
+            precondition(NetEaseAPI.parseWikiBPM(wiki(value)) == nil)
+        }
+        precondition(NetEaseAPI.parseWikiBPM(wiki("63", kind: "year", title: "发行时间")) == nil)
+        precondition(NetEaseAPI.parseWikiBPM(["code": 200, "data": ["blocks": []]]) == nil)
+        MockHTTP.response = wiki("63")
+        let wikiValue = try await api.songBPM(id: 42)
+        precondition(wikiValue == 63)
+        print("PASS wiki BPM parsing, bounds, missing/invalid fields and actual API wrapper mapping")
+        if CommandLine.arguments.contains("--live-bpm") {
+            let live = NetEaseAPI(ephemeral: true)
+            let bpm = try await live.songBPM(id: 167727)
+            precondition(bpm == 63)
+            print("PASS live NetEase encyclopedia: 降温 (167727) BPM 63; anonymous session, no saved account accessed")
+        }
         if CommandLine.arguments.contains("--live") {
             let live = NetEaseAPI(ephemeral: true)
             let key = try await live.qrKey()

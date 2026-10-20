@@ -106,6 +106,40 @@ struct Artwork: View {
     }
 }
 
+/// Real playlist artwork, with a neutral loading/missing state rather than invented colors.
+struct PlaylistArtwork: View {
+    let url: URL?
+    private var thumbnailURL: URL? {
+        guard let url, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        if parts.host?.hasSuffix(".music.126.net") == true {
+            var query = parts.queryItems ?? []
+            query.removeAll { $0.name == "param" }
+            query.append(URLQueryItem(name: "param", value: "168y168"))
+            parts.queryItems = query
+        }
+        return parts.url
+    }
+    var body: some View {
+        GeometryReader { geometry in
+            AsyncImage(url: thumbnailURL) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    ZStack {
+                        CurrentTheme.surface
+                        Image(systemName: "music.note.list")
+                            .font(CurrentTheme.Icon.standard).foregroundStyle(CurrentTheme.muted)
+                    }
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        .clipShape(RoundedRectangle(cornerRadius: CurrentTheme.Radius.standard, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
 struct PrimaryButton: View {
     let title: String
     var symbol: String? = nil
