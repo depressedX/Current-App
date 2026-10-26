@@ -2,6 +2,65 @@ import XCTest
 @testable import Current
 
 final class CurrentTests: XCTestCase {
+    private func recommendationTracks(_ count: Int) -> [Track] {
+        (0..<count).map { Track(id: -100 - $0, title: "Fixture \($0)", artist: "Fixture", album: "Fixture",
+                              artwork: nil, duration: 24, demoIndex: 0) }
+    }
+    @MainActor func testRecommendationRefillsStopsAndRepeatsOnlyOnRequest() {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = AppStore(archiveURL: folder.appendingPathComponent("history.json"))
+        store.enterDemo()
+        let ranked = recommendationTracks(29)
+        let session = ListeningSession(prompt: "fixture intent", tracks: Array(ranked.prefix(12)), createdAt: Date(),
+                                       listenerID: nil, rankedCandidates: ranked)
+        store.replay(session)
+        XCTAssertEqual(store.queue.count, 12)
+        store.play(at: 7) // Four upcoming songs: no refill yet.
+        XCTAssertEqual(store.queue.count, 12)
+        store.next() // Three upcoming songs: append the second batch.
+        XCTAssertEqual(store.currentIndex, 8)
+        XCTAssertEqual(store.queue.count, 24)
+        store.play(at: 8)
+        XCTAssertEqual(store.queue.count, 24) // Repeated triggers cannot duplicate a batch.
+        store.play(at: 20)
+        XCTAssertEqual(store.queue, ranked)
+        XCTAssertTrue(store.recommendationExhausted)
+        store.continueWithRepeats()
+        XCTAssertEqual(store.queue.count, 29) // Explicit repeat also waits for the end.
+        store.play(at: 28); store.next()
+        XCTAssertTrue(store.queueEnded)
+        XCTAssertFalse(store.player.playing)
+        XCTAssertEqual(store.currentIndex, 28)
+        store.next()
+        XCTAssertEqual(store.queue.count, 29)
+        store.continueWithRepeats()
+        XCTAssertFalse(store.queueEnded)
+        XCTAssertEqual(store.currentIndex, 29)
+        XCTAssertEqual(Array(store.queue.suffix(12)), Array(ranked.prefix(12)))
+        XCTAssertEqual(store.activePrompt, "fixture intent")
+        store.continueWithRepeats()
+        XCTAssertEqual(store.queue.count, 41)
+    }
+    @MainActor func testFiniteHistoryAndAccountScopeDoNotCarryRecommendationState() {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = AppStore(archiveURL: folder.appendingPathComponent("history.json"))
+        store.enterDemo()
+        let ranked = recommendationTracks(2)
+        store.replay(ListeningSession(prompt: "new", tracks: ranked, createdAt: Date(), listenerID: nil, rankedCandidates: ranked))
+        XCTAssertTrue(store.recommendationExhausted)
+        store.replay(ListeningSession(prompt: "legacy", tracks: [ranked[0]], createdAt: Date(), listenerID: nil))
+        store.next()
+        XCTAssertTrue(store.queueEnded)
+        XCTAssertFalse(store.recommendationExhausted)
+        store.continueWithRepeats()
+        XCTAssertEqual(store.queue.count, 1)
+        store.replay(ListeningSession(prompt: "another account", tracks: ranked, createdAt: Date(), listenerID: 123,
+                                      rankedCandidates: ranked))
+        XCTAssertEqual(store.activePrompt, "legacy")
+        XCTAssertEqual(store.queue.count, 1)
+    }
     func testComposerRespectsLimitDeduplicatesAndExcludes() {
         let source = DemoCatalog.tracks + DemoCatalog.tracks
         let queue = QueueComposer.compose(catalog: source, limit: 4, excluding: [-1, -2])

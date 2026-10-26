@@ -1,10 +1,15 @@
 import XCTest
 
 final class CurrentUITests: XCTestCase {
-    @MainActor func testDemoQueuePlaybackFeedbackAndLogout() throws {
+    @MainActor func testDemoPoolRequiresPersonalOpenRouterKey() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["openAISettings"].tap()
+        if app.buttons["clearOpenRouterKey"].exists { app.buttons["clearOpenRouterKey"].tap() }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["此刻"].tap()
         let demo = app.buttons["enterDemo"]
         XCTAssertTrue(demo.waitForExistence(timeout: 10))
         demo.tap()
@@ -27,20 +32,24 @@ final class CurrentUITests: XCTestCase {
         let done = app.buttons["完成"]
         if done.exists { done.tap() }
         app.buttons["generateQueue"].tap()
-        let mini = app.buttons["miniPlayer"]
-        XCTAssertTrue(mini.waitForExistence(timeout: 10))
-        mini.tap()
-        XCTAssertTrue(app.buttons["playerNext"].waitForExistence(timeout: 5))
-        app.buttons["likeTrack"].tap()
-        app.buttons["openFeedback"].tap()
-        app.buttons["feedback-wrongMood"].tap()
-        app.buttons["收起播放器"].tap()
-        app.tabBars.buttons["我的"].tap()
-        XCTAssertTrue(app.staticTexts["情绪不太对"].waitForExistence(timeout: 3))
-        app.swipeUp()
-        app.buttons["signOut"].tap()
-        app.buttons["退出"].tap()
-        XCTAssertTrue(app.staticTexts["尚未登录"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.alerts["暂时无法完成"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["请先在我的 → AI 设置填写个人 OpenRouter Key。"].exists)
         XCTAssertFalse(app.buttons["miniPlayer"].exists)
+    }
+    @MainActor func testPersonalKeySettingsSaveAndClear() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["openAISettings"].tap()
+        XCTAssertTrue(app.staticTexts["openrouter/free"].waitForExistence(timeout: 5))
+        if app.buttons["clearOpenRouterKey"].exists { app.buttons["clearOpenRouterKey"].tap() }
+        XCTAssertFalse(app.buttons["saveOpenRouterKey"].isEnabled)
+        let input = app.secureTextFields["openRouterKeyInput"]
+        input.tap(); input.typeText("fixture-only-ui-key")
+        app.buttons["saveOpenRouterKey"].tap()
+        XCTAssertTrue(app.staticTexts["已保存个人 Key"].waitForExistence(timeout: 3))
+        app.buttons["clearOpenRouterKey"].tap()
+        XCTAssertTrue(app.staticTexts["尚未配置个人 Key"].waitForExistence(timeout: 3))
     }
 }

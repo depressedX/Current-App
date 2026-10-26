@@ -68,6 +68,32 @@ struct ListeningSession: Identifiable, Codable {
     let tracks: [Track]
     let createdAt: Date
     let listenerID: Int?
+    // Full ordering from the original intent; absent in older, finite sessions.
+    var rankedCandidates: [Track]? = nil
+    var issuedCandidateIDs: Set<Int>? = nil
+}
+
+/// One intent and one pass through its ranking. Repeats require an explicit new pass.
+struct RecommendationRun {
+    static let batchSize = 12
+    static let refillThreshold = 3
+    let rankedCandidates: [Track]
+    private(set) var issued: Set<Int>
+
+    init(rankedCandidates: [Track], issued: Set<Int> = []) {
+        var seen = Set<Int>()
+        self.rankedCandidates = rankedCandidates.filter { seen.insert($0.id).inserted }
+        self.issued = issued
+    }
+    var exhausted: Bool { rankedCandidates.allSatisfy { issued.contains($0.id) } }
+    func shouldRefill(remaining: Int) -> Bool {
+        remaining <= Self.refillThreshold && !exhausted
+    }
+    mutating func nextBatch() -> [Track] {
+        let batch = Array(rankedCandidates.filter { !issued.contains($0.id) }.prefix(Self.batchSize))
+        issued.formUnion(batch.map(\.id))
+        return batch
+    }
 }
 
 /// Deliberately ignores musical meaning. This MVP validates the interaction, not recommendation quality.
@@ -89,4 +115,27 @@ enum DemoCatalog {
         Track(id: -(index + 1), title: item.0, artist: "Current Studio",
               album: "原创交互演示 · \(item.1)", artwork: nil, duration: 24, demoIndex: index)
     }
+}
+
+/// Provider metadata is separate from acoustic/genre model outputs, even when labels agree.
+struct SongWikiMetadata: Codable, Equatable {
+    let songID: Int
+    let fetchedAt: Date
+    let bpm: Double?
+    let fields: [SongWikiField]
+    var source: String { "netease-song-wiki" }
+    var version = "netease-song-wiki-v1"
+}
+struct SongWikiField: Codable, Equatable {
+    let kind: String
+    let title: String
+    let values: [String]
+}
+
+/// Text endpoint result, never inferred from audio or encyclopedia labels.
+struct LyricsDocument: Sendable {
+    let songID: Int
+    let original: String
+    let translation: String
+    let fetchedAt: Date
 }

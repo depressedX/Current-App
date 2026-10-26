@@ -159,6 +159,8 @@ actor AnalysisProbe {
         getrusage(RUSAGE_SELF, &usageBefore)
         let begin = Date()
         let features = try await NativeSongAnalyzer.analyze(url: wav)
+        print("PROFILE", String(data: try JSONEncoder().encode(features.profile), encoding: .utf8)!)
+        precondition(features.profile?.duration ?? 0 > 179)
         precondition(features.sampleDuration <= 45.01 && features.sampleDuration > 44)
         precondition(features.sampleStart > 60 && features.rmsDBFS.isFinite && features.dynamicSpreadDB.isFinite)
         precondition(features.bpm != nil && abs(features.bpm! - 120) < 2)
@@ -185,13 +187,17 @@ actor AnalysisProbe {
         print("PASS serial worker and rapid pause/resume never overlap")
 
         pool.enqueue([DemoCatalog.tracks[3]], source: "test")
+        try await Task.sleep(for: .milliseconds(100))
+        precondition(pool.completedCount == 3 && pool.songs.last?.state == .queued)
+        pool.resume()
+        print("PASS newly added songs wait for an explicit local submission")
         try await wait { pool.songs.contains { $0.state == .analyzing } }
         pool.setPlaybackBusy(true)
         try await Task.sleep(for: .milliseconds(100))
         precondition(pool.completedCount == 3 && pool.waitReason != nil)
         pool.setPlaybackBusy(false)
         try await wait { pool.completedCount == 4 }
-        pool.enqueue([DemoCatalog.tracks[4]], source: "test")
+        pool.enqueue([DemoCatalog.tracks[4]], source: "test"); pool.resume()
         try await wait { pool.songs.contains { $0.state == .analyzing } }
         pool.setForeground(false)
         try await Task.sleep(for: .milliseconds(100))
@@ -200,7 +206,7 @@ actor AnalysisProbe {
         try await wait { pool.completedCount == 5 }
         print("PASS playback and background preempt analysis and resume remaining work")
 
-        pool.enqueue([DemoCatalog.tracks[5]], source: "test")
+        pool.enqueue([DemoCatalog.tracks[5]], source: "test"); pool.resume()
         try await wait { pool.songs.contains { $0.state == .analyzing } }
         pool.activate(account: "b")
         pool.enqueue([DemoCatalog.tracks[0]], source: "b"); pool.resume()
@@ -212,7 +218,7 @@ actor AnalysisProbe {
 
         pool.resume()
         try await wait { pool.completedCount == 6 }
-        pool.enqueue([DemoCatalog.tracks[6]], source: "remove")
+        pool.enqueue([DemoCatalog.tracks[6]], source: "remove"); pool.resume()
         try await wait { pool.songs.contains { $0.state == .analyzing } }
         let removed = pool.songs.first { $0.track.id == DemoCatalog.tracks[6].id }!.id
         pool.remove(removed)
@@ -366,6 +372,47 @@ actor AnalysisProbe {
         catch is CurrentError {}
         print("PASS semantic upgrade, real vector ranking, failed reanalysis preserves record, scope excludes other accounts")
 
+        let batchFolder = folder.appendingPathComponent("recommendation-ranking")
+        try FileManager.default.createDirectory(at: batchFolder, withIntermediateDirectories: true)
+        let batchURL = batchFolder.appendingPathComponent("pool.json")
+        let batchDisk = SemanticDisk(directory: batchFolder.appendingPathComponent("SongAnalysis"))
+        let batchTracks = (0..<29).map { Track(id: 10000 + $0, title: "Ranking fixture", artist: "Fixture",
+                                              album: "Fixture", artwork: nil, duration: 24, demoIndex: 0) }
+        var batchCatalog = PoolCatalog()
+        _ = batchCatalog.enqueue(batchTracks, account: "a", source: "fixture")
+        for index in batchCatalog.songs.indices {
+            batchCatalog.songs[index].state = .completed
+            if index < 28 {
+                batchCatalog.songs[index].wikiBPM = WikiBPM(value: index == 0 ? 99 : index == 1 ? 100 : index == 2 ? 120 : 121, fetchedAt: Date())
+            }
+            batchCatalog.songs[index].semantic = try await batchDisk.save(
+                SemanticAnalysis(vector: unitVector, windowStarts: [0], elapsedSeconds: 0),
+                songID: batchCatalog.songs[index].id, account: "a", catalog: concepts)
+        }
+        try JSONEncoder().encode(batchCatalog).write(to: batchURL)
+        let rankingPool = SongPoolStore(fileURL: batchURL, resolve: { _ in wav }, concepts: concepts)
+        try await wait { !rankingPool.loading }
+        rankingPool.activate(account: "a")
+        let firstBatch = try await rankingPool.mockSemanticQueue(text: "fixture")
+        let fullRanking = try await rankingPool.mockSemanticQueue(text: "fixture", limit: nil)
+        precondition(firstBatch.tracks == Array(batchTracks.prefix(12)))
+        precondition(fullRanking.tracks == batchTracks && fullRanking.anchor == firstBatch.anchor)
+        let bounded = RecommendationQuery(summary: "100–120 BPM", bpmMinimum: 100, bpmMaximum: 120, bpmRequired: true,
+                                          preferences: [.init(concept: "test", direction: .prefer, weight: 1)], unsupported: [])
+        let boundedTracks = try await rankingPool.recommendationQueue(query: bounded)
+        precondition(boundedTracks == Array(batchTracks[1...2]))
+        let preferred = RecommendationQuery(summary: "最好 100–120 BPM", bpmMinimum: 100, bpmMaximum: 120, bpmRequired: false,
+                                            preferences: [.init(concept: "test", direction: .prefer, weight: 1)], unsupported: [])
+        let preferredTracks = try await rankingPool.recommendationQueue(query: preferred)
+        precondition(preferredTracks.count == 29 && Array(preferredTracks.prefix(2)) == Array(batchTracks[1...2]))
+        let target = RecommendationQuery(summary: "约100 BPM", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: false,
+                                         preferences: [.init(concept: "test", direction: .prefer, weight: 1)], unsupported: [], bpmTarget: 100)
+        let targetTracks = try await rankingPool.recommendationQueue(query: target)
+        precondition(Array(targetTracks.prefix(3)) == [batchTracks[1], batchTracks[0], batchTracks[2]])
+        precondition(targetTracks.last == batchTracks[28])
+        print("PASS real query ranking: inclusive BPM bounds, unknown/outside exclusion and soft BPM preference")
+        print("PASS recommendation ranking returns all 29 candidates for continuation; default batch remains 12")
+
         let corruptURL = folder.appendingPathComponent("corrupt.json")
         let corruptData = Data("not an archive".utf8)
         try corruptData.write(to: corruptURL)
@@ -375,6 +422,163 @@ actor AnalysisProbe {
         let original = try Data(contentsOf: corruptURL)
         precondition(original == corruptData)
         print("PASS corrupt archive is preserved and cannot be overwritten by an empty pool")
+        for path in CommandLine.arguments.dropFirst() {
+            let result = try await NativeSongAnalyzer.analyze(url: URL(fileURLWithPath: path))
+            print("REAL AUDIO PROFILE", String(data: try JSONEncoder().encode(result.profile), encoding: .utf8)!)
+        }
+        let flat = NativeSongAnalyzer.makeProfile(levels: Array(repeating: -20, count: 30), duration: 30, coverage: 1, evidence: .init(), available: false)
+        precondition(flat.steadiness == "响度较平稳" && flat.vocalDescription == "无法判断")
+        let jump = NativeSongAnalyzer.makeProfile(levels: Array(repeating: -30, count: 15) + Array(repeating: -12, count: 15), duration: 30, coverage: 1, evidence: .init(total: 10, vocal: 8), available: true)
+        precondition(jump.largestRiseDB >= 12 && !jump.rises.isEmpty && jump.vocalDescription == "人声持续出现")
+        let uncertain = NativeSongAnalyzer.makeProfile(levels: [-20], duration: 30, coverage: 1, evidence: .init(total: 10, vocal: 1, uncertain: 7), available: true)
+        precondition(uncertain.vocalDescription == "人声分布不确定")
+        let roundTrip = try JSONDecoder().decode(ObjectiveProfile.self, from: JSONEncoder().encode(jump))
+        precondition(roundTrip == jump)
+        print("PASS objective full-song profile, flat vs sustained jump, unknown vs positive vocals, persistence")
+        var steadySpectrum = SpectrumEvidence(rate: 8192)
+        var changedSpectrum = SpectrumEvidence(rate: 8192)
+        for sample in 0..<(8192 * 24) {
+            let time = Double(sample) / 8192
+            steadySpectrum.append(Float(0.4 * sin(2 * .pi * 250 * time)))
+            changedSpectrum.append(Float(0.4 * sin(2 * .pi * (time < 12 ? 250 : 2500) * time)))
+        }
+        precondition((steadySpectrum.peakChange ?? 1) < 0.02)
+        precondition((changedSpectrum.peakChange ?? 0) > 0.8)
+        print("PASS spectral change separates stable tone from sustained timbral transition")
+        let cancelled = Task { try await NativeSongAnalyzer.analyze(url: wav) }
+        cancelled.cancel()
+        do { _ = try await cancelled.value; fatalError("Cancelled full scan returned results") }
+        catch is CancellationError { }
+        print("PASS native pipeline cancellation does not publish partial results")
+        var remoteMetadata = SongWikiMetadata(songID: realTrack.id, fetchedAt: Date(), bpm: 82,
+                                             fields: [SongWikiField(kind: "instrument", title: "乐器", values: ["钢琴"])])
+        var metadataCalls = 0, metadataAudioCalls = 0, failMetadata = false
+        let metadataPool = SongPoolStore(fileURL: folder.appendingPathComponent("wiki-metadata.json"),
+            resolve: { _ in metadataAudioCalls += 1; return wav },
+            fetchWiki: { _ in
+                metadataCalls += 1
+                if failMetadata { throw CurrentError.message("unavailable") }
+                return remoteMetadata
+            }, genreAnalyze: { _ in
+                GenreAnalysis(matches: [GenreMatch(index: 0, family: "Rock", style: "Indie Rock", score: 0.8)],
+                              windows: 8, duration: 24, analyzedAt: Date())
+            }, analyze: { try await probe.run($0) })
+        try await wait { !metadataPool.loading }
+        metadataPool.activate(account: "a"); metadataPool.setForeground(true)
+        metadataPool.enqueue([realTrack], source: "metadata test"); metadataPool.resume()
+        try await wait { metadataPool.completedCount == 1 }
+        let originalFeatures = metadataPool.songs[0].features
+        let originalGenres = metadataPool.songs[0].genres
+        precondition(originalGenres?.matches.first?.style == "Indie Rock")
+        precondition(metadataPool.songs[0].wikiMetadata == remoteMetadata && metadataPool.songs[0].resolvedBPM == 82)
+        remoteMetadata = SongWikiMetadata(songID: realTrack.id, fetchedAt: Date(), bpm: nil,
+                                         fields: [SongWikiField(kind: "songTag", title: "曲风", values: ["后摇"])])
+        metadataPool.refreshWiki(metadataPool.songs[0].id)
+        try await wait { metadataPool.completedCount == 1 && metadataCalls == 2 }
+        precondition(metadataAudioCalls == 1 && metadataPool.songs[0].features == originalFeatures && metadataPool.songs[0].genres == originalGenres)
+        precondition(metadataPool.songs[0].wikiMetadata == remoteMetadata && metadataPool.songs[0].resolvedBPM == 120)
+        failMetadata = true; metadataPool.refreshWiki(metadataPool.songs[0].id)
+        try await wait { metadataPool.completedCount == 1 && metadataCalls == 3 }
+        precondition(metadataPool.songs[0].wikiMetadata == remoteMetadata && metadataPool.songs[0].bpmLookup == .failed)
+        precondition(metadataAudioCalls == 1 && metadataPool.songs[0].features == originalFeatures && metadataPool.songs[0].genres == originalGenres)
+        print("PASS wiki snapshot isolated from local features; metadata-only refresh/no-BPM fallback/failure preservation")
+        let genreURL = folder.appendingPathComponent("genre-pool.json")
+        try JSONEncoder().encode(legacy).write(to: genreURL)
+        var failGenre = false
+        let genreLabels = (0..<400).map { "Rock---Style \($0)" }
+        var genreScores = [Double](repeating: 0.01, count: 400)
+        genreScores[1] = 0.8; genreScores[2] = 0.7
+        let expectedGenres = try GenreAnalysis.summarize(scores: genreScores, labels: genreLabels, windows: 3, duration: 5)
+        let genrePool = SongPoolStore(fileURL: genreURL, resolve: { _ in wav }, genreAnalyze: { _ in
+            if await MainActor.run(body: { failGenre }) { throw GenreError.inference }
+            return expectedGenres
+        }, analyze: { try await probe.run($0) })
+        try await wait { !genrePool.loading }
+        genrePool.activate(account: "a"); genrePool.setForeground(true)
+        precondition(genrePool.songs[0].genres == nil)
+        genrePool.analyzeHearing()
+        try await wait { genrePool.songs[0].genres == expectedGenres }
+        try await wait {
+            (try? JSONDecoder().decode(PoolCatalog.self, from: Data(contentsOf: genreURL)))?.songs.first?.genres == expectedGenres
+        }
+        let oldGenres = genrePool.songs[0].genres
+        failGenre = true; genrePool.reanalyze(genrePool.songs[0].id)
+        try await wait { genrePool.songs[0].state == .failed }
+        precondition(genrePool.songs[0].genres == oldGenres)
+        precondition(genrePool.songs[0].failure == GenreError.inference.localizedDescription)
+        failGenre = false; genrePool.retry(genrePool.songs[0].id)
+        try await wait { genrePool.completedCount == 1 }
+        precondition(genrePool.songs[0].genres?.matches.count == 5)
+        print("PASS genre upgrade, multi-label persistence, failed rerun preservation and retry")
+        var lyricsFetchCalls = 0, lyricAudioCalls = 0, failLyrics = false
+        let lyricPool = SongPoolStore(fileURL: folder.appendingPathComponent("lyrics-pool.json"),
+            resolve: { _ in lyricAudioCalls += 1; return wav },
+            fetchLyrics: { track in
+                lyricsFetchCalls += 1
+                if failLyrics { throw CurrentError.message("network unavailable") }
+                return LyricsDocument(songID: track.id, original: "[00:01]毕业之后，我们道别\n[00:03]来年再一起相见", translation: "", fetchedAt: Date())
+            }, lyricsAnalyze: { document in
+                let parsed = try LyricsParser.prepare(document)
+                var vector = [Float](repeating: 0, count: 512); vector[0] = 1
+                return LyricsAnalysis(status: parsed.status, contentHash: parsed.contentHash,
+                    chunks: parsed.chunks.map { LyricsVectorChunk(chunk: $0, vector: vector) }, fetchedAt: document.fetchedAt)
+            }, lyricsQuery: { _ in
+                try await Task.sleep(for: .milliseconds(40))
+                let active = await probe.active
+                precondition(active == 0, "Query model overlapped pool analysis")
+                var vector = [Float](repeating: 0, count: 512); vector[0] = 1
+                return vector
+            }, analyze: { try await probe.run($0) })
+        try await wait { !lyricPool.loading }
+        lyricPool.activate(account: "a"); lyricPool.setForeground(true)
+        lyricPool.enqueue([realTrack], source: "lyrics"); lyricPool.resume()
+        try await wait { lyricPool.completedCount == 1 }
+        precondition(lyricPool.lyricsCount == 1 && lyricsFetchCalls == 1 && lyricAudioCalls == 1)
+        let lyricFeatures = lyricPool.songs[0].features, originalLyricRecord = lyricPool.songs[0].lyrics!.recordID
+        let lyricMatches = try await lyricPool.searchLyrics("毕业告别")
+        precondition(lyricMatches.matches.count == 1 && lyricMatches.matches[0].track.id == realTrack.id)
+        precondition(lyricMatches.matches[0].lines.first?.second == 1 && lyricMatches.matches[0].source == .original)
+        failLyrics = true; lyricPool.indexLyrics(lyricPool.songs[0].id)
+        try await wait { lyricPool.completedCount == 1 && lyricsFetchCalls == 2 }
+        precondition(lyricPool.songs[0].lyrics?.recordID == originalLyricRecord && lyricPool.songs[0].lyricsFailure == true)
+        precondition(lyricAudioCalls == 1 && lyricPool.songs[0].features == lyricFeatures)
+        failLyrics = false; lyricPool.indexMissingLyrics()
+        try await wait { lyricPool.completedCount == 1 && lyricsFetchCalls == 3 }
+        precondition(lyricPool.songs[0].lyrics?.recordID != originalLyricRecord && lyricPool.songs[0].lyricsFailure != true)
+        precondition(lyricAudioCalls == 1 && lyricPool.songs[0].features == lyricFeatures)
+        let lateLyrics = Task { try await lyricPool.searchLyrics("毕业告别") }
+        try await wait { lyricPool.lyricsSearching }
+        lyricPool.activate(account: "b")
+        do { _ = try await lateLyrics.value; fatalError("Stale cross-account query returned") } catch is CancellationError { }
+        precondition(!lyricPool.lyricsSearching)
+        do { _ = try await lyricPool.searchLyrics("毕业告别"); fatalError("Cross-account lyrics query") } catch is CurrentError { }
+        precondition(lyricPool.lyricsCount == 0)
+        print("PASS lyrics API/index/search queue, source/timestamps, text-only refresh, failure preservation, retry, account isolation")
+        var unavailableAudioCalls = 0, independentFetchCalls = 0
+        let independentLyrics = SongPoolStore(fileURL: folder.appendingPathComponent("lyrics-without-audio.json"),
+            resolve: { _ in unavailableAudioCalls += 1; throw CurrentError.message("No audio permission") },
+            fetchLyrics: { track in
+                independentFetchCalls += 1
+                return LyricsDocument(songID: track.id, original: "[00:02]多年以后再相见", translation: "", fetchedAt: Date())
+            }, lyricsAnalyze: { doc in
+                let prepared = try LyricsParser.prepare(doc)
+                var vector = [Float](repeating: 0, count: 512); vector[0] = 1
+                return LyricsAnalysis(status: prepared.status, contentHash: prepared.contentHash,
+                    chunks: prepared.chunks.map { LyricsVectorChunk(chunk: $0, vector: vector) }, fetchedAt: doc.fetchedAt)
+            }, lyricsQuery: { _ in var v = [Float](repeating: 0, count: 512); v[0] = 1; return v })
+        try await wait { !independentLyrics.loading }
+        independentLyrics.activate(account: "a"); independentLyrics.setForeground(true)
+        independentLyrics.enqueue([realTrack], source: "independent lyrics"); independentLyrics.resume()
+        try await wait { independentLyrics.songs.first?.state == .failed }
+        precondition(independentLyrics.lyricsCount == 1 && independentLyrics.songs[0].features == nil)
+        let noAudioRecord = independentLyrics.songs[0].lyrics!.recordID
+        independentLyrics.indexLyrics(independentLyrics.songs[0].id)
+        try await wait { independentLyrics.songs.first?.state == .failed && independentFetchCalls == 2 }
+        precondition(independentLyrics.songs[0].lyrics?.recordID != noAudioRecord && unavailableAudioCalls == 1)
+        precondition(independentLyrics.songs[0].features == nil && independentLyrics.songs[0].failure != nil)
+        let independentMatches = try await independentLyrics.searchLyrics("再相见")
+        precondition(independentMatches.matches.count == 1)
+        print("PASS audio permission failure preserves usable lyrics; text-only retry retains audio failure and never downloads again")
         print("ALL ANALYSIS CHECKS PASSED")
     }
 }

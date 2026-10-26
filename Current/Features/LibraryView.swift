@@ -2,66 +2,282 @@ import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var pool: SongPoolStore
     @Binding var showLogin: Bool
+    @State private var search = ""
+    @State private var filters = LibraryFilters()
+    @State private var showFilters = false
+    @FocusState private var desktopSearchFocused: Bool
+    private var songs: [PoolSong] { pool.songs.filter { $0.state == .completed } }
+    private var genres: [String] {
+        Array(Set(songs.flatMap { $0.genres?.matches.map(\.familyTitle) ?? [] })).sorted()
+    }
+    private var instruments: [String] {
+        Array(Set(songs.flatMap { $0.features?.profile?.soundLabels.map(\.label) ?? [] })).sorted()
+    }
+    private var filtered: [PoolSong] {
+        matching(filters)
+    }
+    private func matching(_ filters: LibraryFilters) -> [PoolSong] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return songs.filter { song in
+            (query.isEmpty || song.track.title.localizedStandardContains(query) || song.track.artist.localizedStandardContains(query))
+            && filters.matches(song)
+        }
+    }
     var body: some View {
         CurrentPage {
-            if store.listener != nil {
-                HStack {
-                    Text("我的歌单").font(CurrentTheme.TypeScale.section)
-                    Spacer()
-                    Button("刷新") { Task { await store.loadPlaylists() } }
-                        .font(CurrentTheme.TypeScale.body).disabled(store.libraryLoading)
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("我的音乐").font(CurrentTheme.TypeScale.section)
+                    Text("\(songs.count) 首已纳入范围").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                 }
-                if store.libraryLoading { ProgressView("正在加载…").font(CurrentTheme.TypeScale.secondary) }
-                if store.playlists.isEmpty && !store.libraryLoading {
-                    Text("暂无歌单，下拉刷新试试。")
-                        .font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
-                }
-                LazyVStack(spacing: CurrentTheme.Space.tiny) {
-                    ForEach(store.playlists) { playlist in
-                        HStack(spacing: CurrentTheme.Space.row) {
-                            PlaylistArtwork(url: playlist.artwork)
-                                .frame(width: 56, height: 56)
-                            VStack(alignment: .leading, spacing: CurrentTheme.Space.tiny) {
-                                Text(playlist.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary).lineLimit(2)
-                                Text("\(playlist.count) 首").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                            }
-                            Spacer()
-                        }.padding(8).contentShape(Rectangle())
+                Spacer()
+                NavigationLink { SongPoolView() } label: {
+                    Text("管理").font(CurrentTheme.TypeScale.emphasis)
+                        .padding(.horizontal, 18).frame(minHeight: 44)
+                        .background(CurrentTheme.surface, in: Capsule())
+                }.buttonStyle(CurrentPressStyle())
+            }
+            if ProcessInfo.processInfo.isiOSAppOnMac {
+                HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(CurrentTheme.muted)
+                        TextField("搜索歌名、歌手", text: $search)
+                            .textFieldStyle(.plain)
+                            .focused($desktopSearchFocused)
+                            .submitLabel(.search)
+                            .onSubmit { desktopSearchFocused = false }
+                            .accessibilityIdentifier("librarySearch")
+                        if !search.isEmpty {
+                            Button { search = "" } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(CurrentTheme.muted)
+                            }.buttonStyle(.plain).accessibilityLabel("清空搜索")
+                        }
+                    }.padding(.horizontal, 14).frame(minHeight: 44)
+                        .background(CurrentTheme.surface, in: Capsule())
+                    if desktopSearchFocused {
+                        Button("取消") { search = ""; desktopSearchFocused = false }
+                            .font(CurrentTheme.TypeScale.secondary).frame(minHeight: 44)
                     }
                 }
-            } else if store.demoMode {
-                HStack {
-                    Text("演示曲库").font(CurrentTheme.TypeScale.section)
-                    Spacer(); Text("8 首").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            }
+            NavigationLink { LyricsSearchView() } label: {
+                HStack(spacing: 12) {
+                    Text("歌词检索").font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary)
+                    Spacer()
+                    Text("\(pool.lyricsCount) 首可检索").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                    Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
+                }.padding(.horizontal, 16).frame(minHeight: 56)
+                    .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
+            }.buttonStyle(CurrentPressStyle())
+            if songs.isEmpty {
+                ContentUnavailableView("音乐库还是空的", systemImage: "music.note.list", description: Text("在管理中加入歌曲，分析完成后会出现在这里。"))
+                if store.listener == nil && !store.demoMode {
+                    PrimaryButton(title: "连接网易云") { showLogin = true }
                 }
-                Text("原创短音频").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                LazyVStack(spacing: CurrentTheme.Space.group) {
-                    ForEach(DemoCatalog.tracks) { track in
-                        HStack(spacing: CurrentTheme.Space.row) {
-                            Artwork(track: track).frame(width: 48, height: 48)
-                            VStack(alignment: .leading, spacing: CurrentTheme.Space.tiny) {
-                                Text(track.title).font(CurrentTheme.TypeScale.emphasis)
-                                Text("Current Studio").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("\(filtered.count) 首歌曲").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                        Spacer()
+                        Button { showFilters = true } label: {
+                            Text(filters.count == 0 ? "筛选" : "筛选 · \(filters.count)")
+                                .font(CurrentTheme.TypeScale.secondary.weight(.semibold))
+                                .padding(.horizontal, 16).frame(minHeight: 44)
+                                .foregroundStyle(filters.count == 0 ? Color.primary : CurrentTheme.accent)
+                                .background(CurrentTheme.surface, in: Capsule())
+                        }.buttonStyle(CurrentPressStyle())
+                    }
+                    if filters.count > 0 {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(filters.genres.sorted(), id: \.self) { value in
+                                    removableChip(value) { filters.genres.remove(value) }
+                                }
+                                ForEach(filters.instruments.sorted(), id: \.self) { value in
+                                    removableChip(value) { filters.instruments.remove(value) }
+                                }
+                                if filters.hasBPM {
+                                    removableChip(filters.bpmTitle) { filters.minimum = ""; filters.maximum = "" }
+                                }
                             }
-                            Spacer()
-                            Text(track.duration.clock).font(CurrentTheme.TypeScale.caption).monospacedDigit().foregroundStyle(CurrentTheme.muted)
                         }
                     }
                 }
-                Divider()
-                Button("连接网易云，使用我的歌单") { showLogin = true }.font(CurrentTheme.TypeScale.body)
-            } else {
-                VStack(alignment: .leading, spacing: CurrentTheme.Space.row) {
-                    Text("你的音乐，在这里").font(CurrentTheme.TypeScale.section)
-                    Text("连接网易云，带入收藏的歌单。")
-                        .font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
+                if filtered.isEmpty {
+                    ContentUnavailableView {
+                        Label("没有符合条件的歌曲", systemImage: "magnifyingglass")
+                    } actions: {
+                        if filters.count > 0 { Button("清空筛选") { filters = LibraryFilters() } }
+                        if !search.isEmpty { Button("清空搜索") { search = "" } }
+                    }
                 }
-                PrimaryButton(title: "连接网易云") { showLogin = true }
+                LazyVStack(spacing: 4) {
+                    ForEach(filtered) { song in
+                        NavigationLink { PoolSongDetail(id: song.id) } label: {
+                            HStack(spacing: 12) {
+                                Artwork(track: song.track).frame(width: 48, height: 48)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(song.track.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary).lineLimit(1)
+                                    Text(song.track.artist).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted).lineLimit(1)
+                                    let summary = songSummary(song)
+                                    if !summary.isEmpty {
+                                        Text(summary).font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted).lineLimit(1)
+                                    }
+                                }
+                                Spacer(minLength: 8)
+                                Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
+                            }.padding(.vertical, 8).contentShape(Rectangle())
+                        }.buttonStyle(CurrentRowStyle())
+                    }
+                }
             }
         }
         .navigationTitle("音乐库").navigationBarTitleDisplayMode(.inline)
-        .refreshable { await store.loadPlaylists() }
+        .modifier(LibrarySearchCompatibility(text: $search))
+        .sheet(isPresented: $showFilters) {
+            LibraryFilterSheet(initial: filters, genres: genres, instruments: instruments,
+                               resultCount: { matching($0).count }) { filters = $0 }
+        }
+        .onChange(of: pool.account) { _, _ in
+            filters = LibraryFilters(); search = ""; showFilters = false
+        }
+    }
+    private func removableChip(_ title: String, remove: @escaping () -> Void) -> some View {
+        Button(action: remove) {
+            HStack(spacing: 8) {
+                Text(title)
+                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+            }.font(CurrentTheme.TypeScale.secondary)
+                .padding(.horizontal, 12).frame(minHeight: 44)
+                .background(CurrentTheme.accent.opacity(0.08), in: Capsule())
+                .foregroundStyle(CurrentTheme.accent)
+        }.buttonStyle(CurrentPressStyle()).accessibilityLabel("移除筛选：" + title)
+    }
+    private func songSummary(_ song: PoolSong) -> String {
+        var parts: [String] = []
+        if let style = song.genres?.matches.first { parts.append(style.title) }
+        if let bpm = song.resolvedBPM { parts.append("\(Int(bpm.rounded())) BPM") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// UISearchController's navigation presentation can assert in iOS-on-Mac.
+/// Keep the native search controller on iPhone; Mac uses the inline field above.
+private struct LibrarySearchCompatibility: ViewModifier {
+    @Binding var text: String
+    @ViewBuilder func body(content: Content) -> some View {
+        if ProcessInfo.processInfo.isiOSAppOnMac {
+            content
+        } else {
+            content.searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索歌名、歌手")
+        }
+    }
+}
+
+private struct LibraryFilters {
+    var genres: Set<String> = []
+    var instruments: Set<String> = []
+    var minimum = ""
+    var maximum = ""
+    var hasBPM: Bool { !minimum.isEmpty || !maximum.isEmpty }
+    var count: Int { genres.count + instruments.count + (hasBPM ? 1 : 0) }
+    var valid: Bool {
+        let bounds = [minimum, maximum].filter { !$0.isEmpty }
+        return bounds.allSatisfy { Int($0).map { (1...400).contains($0) } == true }
+            && (Int(minimum) ?? 1) <= (Int(maximum) ?? 400)
+    }
+    var bpmTitle: String {
+        if minimum.isEmpty { return "≤ \(maximum) BPM" }
+        if maximum.isEmpty { return "≥ \(minimum) BPM" }
+        return "\(minimum)–\(maximum) BPM"
+    }
+    // Alternatives within a category; intersect different categories.
+    func matches(_ song: PoolSong) -> Bool {
+        guard valid else { return false }
+        let styles = Set(song.genres?.matches.map(\.familyTitle) ?? [])
+        let sounds = Set(song.features?.profile?.soundLabels.map(\.label) ?? [])
+        return (genres.isEmpty || !genres.isDisjoint(with: styles))
+            && (instruments.isEmpty || !instruments.isDisjoint(with: sounds))
+            && (!hasBPM || song.resolvedBPM.map {
+                $0 >= Double(Int(minimum) ?? 1) && $0 <= Double(Int(maximum) ?? 400)
+            } == true)
+    }
+}
+
+private struct LibraryFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: LibraryFilters
+    let genres: [String]
+    let instruments: [String]
+    let resultCount: (LibraryFilters) -> Int
+    let apply: (LibraryFilters) -> Void
+    init(initial: LibraryFilters, genres: [String], instruments: [String],
+         resultCount: @escaping (LibraryFilters) -> Int, apply: @escaping (LibraryFilters) -> Void) {
+        _draft = State(initialValue: initial)
+        self.genres = genres; self.instruments = instruments
+        self.resultCount = resultCount; self.apply = apply
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    choices(genres, selection: $draft.genres)
+                } header: { Text("风格") } footer: { Text("同类任选其一，不同类别同时满足。") }
+                Section("乐器") { choices(instruments, selection: $draft.instruments) }
+                Section {
+                    HStack(spacing: 12) {
+                        TextField("最低", text: $draft.minimum).accessibilityLabel("最低 BPM")
+                        Text("—").foregroundStyle(CurrentTheme.muted)
+                        TextField("最高", text: $draft.maximum).accessibilityLabel("最高 BPM")
+                        Text("BPM").foregroundStyle(CurrentTheme.muted)
+                    }.keyboardType(.numberPad).multilineTextAlignment(.center)
+                        .padding(.vertical, 8)
+                    if !draft.valid {
+                        Text("请输入 1–400，最低值不能高于最高值。")
+                            .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.accent)
+                    }
+                } header: { Text("节奏") } footer: { Text("留空不限") }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("筛选").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("重置") { draft = LibraryFilters() } }
+            }
+            .safeAreaInset(edge: .bottom) {
+                PrimaryButton(title: draft.valid ? "查看 \(resultCount(draft)) 首" : "检查 BPM 区间") {
+                    apply(draft); dismiss()
+                }.disabled(!draft.valid)
+                    .padding(16).background(.bar)
+            }
+        }.presentationDetents([.large]).presentationDragIndicator(.visible)
+    }
+    private func choices(_ values: [String], selection: Binding<Set<String>>) -> some View {
+        Group {
+            if values.isEmpty {
+                Text("暂无可用标签").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], spacing: 8) {
+                    ForEach(values, id: \.self) { value in
+                        let selected = selection.wrappedValue.contains(value)
+                        Button {
+                            if selected { selection.wrappedValue.remove(value) }
+                            else { selection.wrappedValue.insert(value) }
+                        } label: {
+                            Text(value).font(CurrentTheme.TypeScale.secondary.weight(selected ? .semibold : .medium))
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .padding(.horizontal, 8)
+                                .foregroundStyle(selected ? Color.white : Color.primary)
+                                .background(selected ? CurrentTheme.accent : Color.primary.opacity(0.06), in: Capsule())
+                        }.buttonStyle(CurrentPressStyle())
+                            .accessibilityAddTraits(selected ? [.isSelected] : [])
+                    }
+                }.padding(.vertical, 4)
+            }
+        }
     }
 }
 
@@ -76,7 +292,7 @@ struct ProfileView: View {
                 ZStack {
                     Circle().fill(CurrentTheme.surface)
                     if let url = store.listener?.avatar {
-                        AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.clear }
+                        CachedArtwork(url: ArtworkCache.url(url, pixels: 160)) { Color.clear }
                     } else {
                         Image(systemName: "person.fill").font(CurrentTheme.Icon.avatar).foregroundStyle(CurrentTheme.muted)
                     }
@@ -142,6 +358,14 @@ struct ProfileView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: CurrentTheme.Space.page) {
+                NavigationLink { AISettingsView() } label: {
+                    HStack {
+                        Text("AI 设置").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
+                        Spacer()
+                        Text(store.openRouterConfigured ? "已配置" : "填写个人 Key").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                        Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
+                    }
+                }.accessibilityIdentifier("openAISettings")
                 NavigationLink { AboutView() } label: {
                     HStack {
                         Text("关于 Current").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
@@ -178,7 +402,7 @@ struct AboutView: View {
                 Text("Current").font(CurrentTheme.TypeScale.title)
                 Text("0.1.0 · 交互预览").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             }
-            aboutSection("选歌", "当前随机选歌。输入的文字会保留为歌单名称，尚未接入情绪、风格或 BPM 算法。")
+            aboutSection("选歌", "通过个人 OpenRouter Key 理解听歌需求，再按 BPM 条件和歌曲池听感排序。首批最多 12 首，剩余 3 首时自动补充；候选听完后可允许重复继续听。")
             aboutSection("推荐偏好", "喜欢和不合适仅用于 Current 的推荐偏好，永不同步网易云收藏。当前只记录反馈，待接入推荐排序后生效。")
             aboutSection("演示音频", "8 首原创合成片段，用于体验播放操作。")
             aboutSection("CarPlay", "先在 iPhone 准备歌单。真机使用需要 Apple 音频授权。")

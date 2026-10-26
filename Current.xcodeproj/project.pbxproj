@@ -79,6 +79,62 @@
 		F6E27522C0C82C045BF4DA94 /* DCLAPAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A014AAA8D31B843F3CFCFC /* DCLAPAnalyzer.swift */; };
 		FB0A49E0F88C39EA6798462E /* DCLAPAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A014AAA8D31B843F3CFCFC /* DCLAPAnalyzer.swift */; };
 		FB1C6DCFE5D938DE2F5270E7 /* Semantics in Resources */ = {isa = PBXBuildFile; fileRef = 9E30BC25AB16183E4B5066DD /* Semantics */; };
+		817795A0AF6F9C9D617B9047 /* GenreFrontend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45C49B54234CF9186694F11 /* GenreFrontend.swift */; };
+		444DC6A50084CB919BE31846 /* GenreFrontend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45C49B54234CF9186694F11 /* GenreFrontend.swift */; };
+		C81E137ADD4B580B65754CAC /* GenreAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5594FAA8528A9033519AABA0 /* GenreAnalyzer.swift */; };
+		A08B82E2F414126AC4FC663A /* GenreAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5594FAA8528A9033519AABA0 /* GenreAnalyzer.swift */; };
+		7226DC76945369259FA8A27A /* LyricsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0498E0A3217CB7B35FCB3E9 /* LyricsModels.swift */; };
+		E6A4CE80A7BCAEFA36C08445 /* LyricsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0498E0A3217CB7B35FCB3E9 /* LyricsModels.swift */; };
+		B7E41D19D3558A7608D33129 /* BGEWordPiece.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763D6EB24242C87085B0E7AA /* BGEWordPiece.swift */; };
+		884E62F81F051BF166D799BB /* BGEWordPiece.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763D6EB24242C87085B0E7AA /* BGEWordPiece.swift */; };
+		610C6408D47A340FDBA1012D /* LyricsAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CD5158F5374BFF9B66489A /* LyricsAnalyzer.swift */; };
+		4631DB23E82DEDD3A5D39C5C /* LyricsAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CD5158F5374BFF9B66489A /* LyricsAnalyzer.swift */; };
+		45AE88A81E9C0A0CDC1F7CD5 /* LyricsSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D92A19D6B4A8B40719DD2E3C /* LyricsSearchView.swift */; };
+		8001A2DA812A678458E33B4A /* LyricsSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D92A19D6B4A8B40719DD2E3C /* LyricsSearchView.swift */; };
+		6DB1C81FBA9C17B4629A3BC1 /* RecommendationQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF70D8D31F524866D1DDC0C /* RecommendationQuery.swift */; };
+		B4F324D8286E9FC8E93495C5 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BB0D437025A4B46CBAFDB1 /* AISettingsView.swift */; };
+		CDC03966D4ADEC403CEDF079 /* RecommendationQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF70D8D31F524866D1DDC0C /* RecommendationQuery.swift */; };
+		BE4858E874614AAD0C13C310 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BB0D437025A4B46CBAFDB1 /* AISettingsView.swift */; };
+		DD1ED1B541625055F86EFB50 /* OpenAI in Frameworks */ = {isa = PBXBuildFile; productRef = 87756842BEA730DE68D6F33E /* OpenAI */; };
+		C93042386E9A1FDEAE63237F /* OpenRouterClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319E3CA687BCBBC52EDFBB7D /* OpenRouterClient.swift */; };
+		DA353FE1443180AE794D4428 /* OpenRouterClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319E3CA687BCBBC52EDFBB7D /* OpenRouterClient.swift */; };
+		9CE61650D95A7FADD6CDA430 /* OpenAI in Frameworks */ = {isa = PBXBuildFile; productRef = B0E0A3837C3345751E0B73B4 /* OpenAI */; };
+		4F88A5A451077933475C6EA1 /* ArtworkCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1BEC6F301D2580625131E81 /* ArtworkCache.swift */; };
+		7048346F2D88B4FFD1489687 /* PlaybackArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A6DA328F549A4D81714983 /* PlaybackArtworkTests.swift */; };
+		C8E0C4DAF77A7FB798A51C29 /* ArtworkCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1BEC6F301D2580625131E81 /* ArtworkCache.swift */; };
+		04304C5375A2EDBEE86F421A /* NetEaseAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA839A20EA931BADE183F678 /* NetEaseAPI.swift */; };
+		1D554C81993F353E679A6CA8 /* CompanionWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935CFDC3BF2775D20CCF8929 /* CompanionWorker.swift */; };
+		20757A9B6CFDCBD0677FEB37 /* AcousticDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D7C57E2C7CE2032DF64D5F /* AcousticDSP.swift */; };
+		221DA00E8D4823EBE7226026 /* DCLAPFrontend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29EB949322573C924B10446E /* DCLAPFrontend.swift */; };
+		232721AFEB1C1A4457903EAD /* LyricsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0498E0A3217CB7B35FCB3E9 /* LyricsModels.swift */; };
+		3A7828557B58052FE289E4AE /* CompanionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58F4F56858FEFF0CEA848D4 /* CompanionView.swift */; };
+		3B6214B18C3133B815E07EA6 /* CompanionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58F4F56858FEFF0CEA848D4 /* CompanionView.swift */; };
+		3E4B12F33AAF320EC170C85D /* LyricsAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CD5158F5374BFF9B66489A /* LyricsAnalyzer.swift */; };
+		40568ADCE2623E488DBC9034 /* NativeSongAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA1CD3EEEF908CC10CE6679 /* NativeSongAnalyzer.swift */; };
+		4393BD25D2671C78A8210E3A /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B112DE9A9A4C5BAC0A0411 /* Models.swift */; };
+		4E896250B41DB034925499F2 /* CompanionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F936474DA9B620468CA3B9 /* CompanionProtocol.swift */; };
+		5199BDC5D558032E5C6D3DB8 /* CompanionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE459E0696E24F8F5393BC29 /* CompanionClient.swift */; };
+		567844C2A0CD8720665DE6D7 /* AnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83AB243EC984081B2FBCAE5 /* AnalysisModels.swift */; };
+		5A2686D82B6C1DE2E9E1F476 /* NetEaseCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11E257AD7B19295569796A28 /* NetEaseCrypto.swift */; };
+		636E54BB8C0A72252690BC1D /* SemanticModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545D3577A208B7CBE9A45F19 /* SemanticModels.swift */; };
+		8239F2E4CCE9758F94DC743E /* CompanionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F936474DA9B620468CA3B9 /* CompanionProtocol.swift */; };
+		8DF6761BA89B0F8B48BF8270 /* CompanionConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F066EDC7D553D9B37AF31055 /* CompanionConnection.swift */; };
+		8EA0D5667F88E1023CC2C447 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CB60B93FE970094447D723 /* KeychainStore.swift */; };
+		9C9B86A3A68DA94007FDA5EE /* Semantics in Resources */ = {isa = PBXBuildFile; fileRef = 9E30BC25AB16183E4B5066DD /* Semantics */; };
+		A3FB5256FC6EB24463A35F56 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1234C5BF378A39E70CD92EC /* AppLog.swift */; };
+		A427FD3B7D08A45C9C53656E /* CompanionConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F066EDC7D553D9B37AF31055 /* CompanionConnection.swift */; };
+		A79B12FCDFB3F4FB34762BC7 /* CompanionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE459E0696E24F8F5393BC29 /* CompanionClient.swift */; };
+		C2C9612B8932ACF49DFDE44B /* CompanionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F936474DA9B620468CA3B9 /* CompanionProtocol.swift */; };
+		D6212BBBB251AE6C36730692 /* DCLAPAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A014AAA8D31B843F3CFCFC /* DCLAPAnalyzer.swift */; };
+		D90E3C960545D984D8BEBBC3 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = CDDD1DD7B4DAEFE75C6CBE80 /* onnxruntime */; };
+		E036629B05B0427009403D66 /* GenreFrontend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45C49B54234CF9186694F11 /* GenreFrontend.swift */; };
+		E1D2E7EC9FBDAC817A9698F2 /* CompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DAED9A9CD8B470E44C1CD4 /* CompanionApp.swift */; };
+		E7802504C6C3FEA4C5398A4D /* CompanionConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F066EDC7D553D9B37AF31055 /* CompanionConnection.swift */; };
+		F92441BBB87540A555F7F68D /* BGEWordPiece.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763D6EB24242C87085B0E7AA /* BGEWordPiece.swift */; };
+		FB79B649141DA1B4248C2F21 /* GenreAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5594FAA8528A9033519AABA0 /* GenreAnalyzer.swift */; };
+		E092FCAC935B867D84D85E25 /* SRP in Frameworks */ = {isa = PBXBuildFile; productRef = AAEE6D6690FB597652CBC3FF /* SRP */; };
+		6BAEB27BA5D46EC9E685CFC6 /* SRP in Frameworks */ = {isa = PBXBuildFile; productRef = 76AD98092AF4A5E71C1C67C3 /* SRP */; };
+		BD153CBE841770D2B7D1D833 /* SRP in Frameworks */ = {isa = PBXBuildFile; productRef = F396329A3269D9F2D41DF455 /* SRP */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -139,6 +195,24 @@
 		E35F40A152B9BBD6AE56B4F7 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		FA839A20EA931BADE183F678 /* NetEaseAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetEaseAPI.swift; sourceTree = "<group>"; };
 		FDA1CD3EEEF908CC10CE6679 /* NativeSongAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSongAnalyzer.swift; sourceTree = "<group>"; };
+		E45C49B54234CF9186694F11 /* GenreFrontend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreFrontend.swift; sourceTree = "<group>"; };
+		5594FAA8528A9033519AABA0 /* GenreAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreAnalyzer.swift; sourceTree = "<group>"; };
+		F0498E0A3217CB7B35FCB3E9 /* LyricsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsModels.swift; sourceTree = "<group>"; };
+		763D6EB24242C87085B0E7AA /* BGEWordPiece.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BGEWordPiece.swift; sourceTree = "<group>"; };
+		68CD5158F5374BFF9B66489A /* LyricsAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsAnalyzer.swift; sourceTree = "<group>"; };
+		D92A19D6B4A8B40719DD2E3C /* LyricsSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsSearchView.swift; sourceTree = "<group>"; };
+		9FF70D8D31F524866D1DDC0C /* RecommendationQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecommendationQuery.swift; sourceTree = "<group>"; };
+		D0BB0D437025A4B46CBAFDB1 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
+		319E3CA687BCBBC52EDFBB7D /* OpenRouterClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterClient.swift; sourceTree = "<group>"; };
+		A5A6DA328F549A4D81714983 /* PlaybackArtworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackArtworkTests.swift; sourceTree = "<group>"; };
+		D1BEC6F301D2580625131E81 /* ArtworkCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkCache.swift; sourceTree = "<group>"; };
+		70F936474DA9B620468CA3B9 /* CompanionProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionProtocol.swift; sourceTree = "<group>"; };
+		75906DB13F481B3AC2E1E823 /* CurrentCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CurrentCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		88DAED9A9CD8B470E44C1CD4 /* CompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionApp.swift; sourceTree = "<group>"; };
+		935CFDC3BF2775D20CCF8929 /* CompanionWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionWorker.swift; sourceTree = "<group>"; };
+		AE459E0696E24F8F5393BC29 /* CompanionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionClient.swift; sourceTree = "<group>"; };
+		B58F4F56858FEFF0CEA848D4 /* CompanionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionView.swift; sourceTree = "<group>"; };
+		F066EDC7D553D9B37AF31055 /* CompanionConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionConnection.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,6 +221,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				576AD62D1CCB548C7F4BCA41 /* onnxruntime in Frameworks */,
+				6BAEB27BA5D46EC9E685CFC6 /* SRP in Frameworks */,
+				9CE61650D95A7FADD6CDA430 /* OpenAI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -155,6 +231,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				44E6B235671829CF0AF867EC /* onnxruntime in Frameworks */,
+				E092FCAC935B867D84D85E25 /* SRP in Frameworks */,
+				DD1ED1B541625055F86EFB50 /* OpenAI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5D0EF8267E03CD321ACD4E50 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D90E3C960545D984D8BEBBC3 /* onnxruntime in Frameworks */,
+				BD153CBE841770D2B7D1D833 /* SRP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -164,6 +251,7 @@
 		057A08C4C05073381B0FD8B1 = {
 			isa = PBXGroup;
 			children = (
+				8A5E92A6DD1569F878D22569 /* MacCompanion */,
 				5A7C5D21457BD07FBED73206 /* Current */,
 				5E0BD2D7966F2D0D3367B24D /* Tests */,
 				FBEE5B9FF865CA9BEA93D634 /* Products */,
@@ -173,10 +261,15 @@
 		05F0ACC0ADC801FF74696D41 /* Analysis */ = {
 			isa = PBXGroup;
 			children = (
+				68CD5158F5374BFF9B66489A /* LyricsAnalyzer.swift */,
+				763D6EB24242C87085B0E7AA /* BGEWordPiece.swift */,
+				F0498E0A3217CB7B35FCB3E9 /* LyricsModels.swift */,
 				73D7C57E2C7CE2032DF64D5F /* AcousticDSP.swift */,
 				D83AB243EC984081B2FBCAE5 /* AnalysisModels.swift */,
 				B4A014AAA8D31B843F3CFCFC /* DCLAPAnalyzer.swift */,
 				29EB949322573C924B10446E /* DCLAPFrontend.swift */,
+				5594FAA8528A9033519AABA0 /* GenreAnalyzer.swift */,
+				E45C49B54234CF9186694F11 /* GenreFrontend.swift */,
 				FDA1CD3EEEF908CC10CE6679 /* NativeSongAnalyzer.swift */,
 				545D3577A208B7CBE9A45F19 /* SemanticModels.swift */,
 				2734DD5550DE719083CEF6C5 /* SongPoolStore.swift */,
@@ -196,6 +289,7 @@
 			isa = PBXGroup;
 			children = (
 				E024E2F0C7142854C04233F4 /* CurrentTests.swift */,
+				A5A6DA328F549A4D81714983 /* PlaybackArtworkTests.swift */,
 			);
 			path = CurrentTests;
 			sourceTree = "<group>";
@@ -220,6 +314,9 @@
 				FA839A20EA931BADE183F678 /* NetEaseAPI.swift */,
 				11E257AD7B19295569796A28 /* NetEaseCrypto.swift */,
 				A65B900DB525CFA4A30EA9CF /* PlaybackController.swift */,
+				319E3CA687BCBBC52EDFBB7D /* OpenRouterClient.swift */,
+				9FF70D8D31F524866D1DDC0C /* RecommendationQuery.swift */,
+				D1BEC6F301D2580625131E81 /* ArtworkCache.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -243,6 +340,7 @@
 				5F2A8363F052B9C143E1B9E9 /* Diagnostics */,
 				846FE5A70B95FC3E71D7D7EC /* Features */,
 				2A4043DF849D267D51016769 /* Resources */,
+				2DDC5D1E6951FAAA223D45B1 /* Companion */,
 			);
 			path = Current;
 			sourceTree = "<group>";
@@ -267,12 +365,15 @@
 		846FE5A70B95FC3E71D7D7EC /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				D92A19D6B4A8B40719DD2E3C /* LyricsSearchView.swift */,
 				E35F40A152B9BBD6AE56B4F7 /* DiagnosticsView.swift */,
 				D63D53BD361D504C4DF0BD77 /* LibraryView.swift */,
 				7E2F9EB2FB536F6F1E58498F /* LoginView.swift */,
 				85898E054D4707F1D8D1FE82 /* PlayerView.swift */,
 				75D3CD882BA944224EAC4619 /* RootView.swift */,
 				1FF7CF84794F5392CBAA8EF4 /* SongPoolView.swift */,
+				D0BB0D437025A4B46CBAFDB1 /* AISettingsView.swift */,
+				B58F4F56858FEFF0CEA848D4 /* CompanionView.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -315,8 +416,28 @@
 				1AC48E765F523BDDCD0CC337 /* CurrentCarPlay.app */,
 				686AE612327DFCE2C66AD1F9 /* CurrentTests.xctest */,
 				1EFA8F334C33F422360605B4 /* CurrentUITests.xctest */,
+				75906DB13F481B3AC2E1E823 /* CurrentCompanion.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2DDC5D1E6951FAAA223D45B1 /* Companion */ = {
+			isa = PBXGroup;
+			children = (
+				AE459E0696E24F8F5393BC29 /* CompanionClient.swift */,
+				F066EDC7D553D9B37AF31055 /* CompanionConnection.swift */,
+				70F936474DA9B620468CA3B9 /* CompanionProtocol.swift */,
+			);
+			path = Companion;
+			sourceTree = "<group>";
+		};
+		8A5E92A6DD1569F878D22569 /* MacCompanion */ = {
+			isa = PBXGroup;
+			children = (
+				88DAED9A9CD8B470E44C1CD4 /* CompanionApp.swift */,
+				935CFDC3BF2775D20CCF8929 /* CompanionWorker.swift */,
+			);
+			path = MacCompanion;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -337,6 +458,8 @@
 			name = Current;
 			packageProductDependencies = (
 				FFD68ED5827C46B37D4D31EB /* onnxruntime */,
+				AAEE6D6690FB597652CBC3FF /* SRP */,
+				87756842BEA730DE68D6F33E /* OpenAI */,
 			);
 			productName = Current;
 			productReference = 9CFE8D5B9ED4F061B9997058 /* Current.app */;
@@ -393,9 +516,32 @@
 			name = CurrentCarPlay;
 			packageProductDependencies = (
 				5054EE6E18A10E0BD0AFE4B2 /* onnxruntime */,
+				76AD98092AF4A5E71C1C67C3 /* SRP */,
+				B0E0A3837C3345751E0B73B4 /* OpenAI */,
 			);
 			productName = CurrentCarPlay;
 			productReference = 1AC48E765F523BDDCD0CC337 /* CurrentCarPlay.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B68B13A7ED443B5E3B0953E1 /* CurrentCompanion */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3AF0F23310148430319D6221 /* Build configuration list for PBXNativeTarget "CurrentCompanion" */;
+			buildPhases = (
+				491FD2F93D7BBCDF2D64863B /* Sources */,
+				0919D48130E64B6F067F1F43 /* Resources */,
+				5D0EF8267E03CD321ACD4E50 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CurrentCompanion;
+			packageProductDependencies = (
+				CDDD1DD7B4DAEFE75C6CBE80 /* onnxruntime */,
+				F396329A3269D9F2D41DF455 /* SRP */,
+			);
+			productName = CurrentCompanion;
+			productReference = 75906DB13F481B3AC2E1E823 /* CurrentCompanion.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -436,7 +582,9 @@
 			mainGroup = 057A08C4C05073381B0FD8B1;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				4247362795C5FA5E7D3A39CD /* XCRemoteSwiftPackageReference "swift-srp" */,
 				9B2B97201E9312617C5FADB5 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
+				AC4073CFEACF47956ADE4075 /* XCRemoteSwiftPackageReference "OpenAI" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FBEE5B9FF865CA9BEA93D634 /* Products */;
@@ -447,6 +595,7 @@
 				EF2FA628007D3BAB6E1FFC43 /* CurrentCarPlay */,
 				ABADB38472040DC0E8DCFD0F /* CurrentTests */,
 				35ED396318C5B662FB8F466D /* CurrentUITests */,
+				B68B13A7ED443B5E3B0953E1 /* CurrentCompanion */,
 			);
 		};
 /* End PBXProject section */
@@ -488,6 +637,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0919D48130E64B6F067F1F43 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C9B86A3A68DA94007FDA5EE /* Semantics in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -495,6 +652,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				45AE88A81E9C0A0CDC1F7CD5 /* LyricsSearchView.swift in Sources */,
+				610C6408D47A340FDBA1012D /* LyricsAnalyzer.swift in Sources */,
+				B7E41D19D3558A7608D33129 /* BGEWordPiece.swift in Sources */,
+				7226DC76945369259FA8A27A /* LyricsModels.swift in Sources */,
 				EA7F2346BF736276663C6FEF /* AcousticDSP.swift in Sources */,
 				0041C97F0BE257A9AEC01FC7 /* AnalysisModels.swift in Sources */,
 				141B99A447157BF83EB77AE0 /* AppLog.swift in Sources */,
@@ -504,6 +665,8 @@
 				5E3F9B00AE4F1226367C5B36 /* CurrentTheme.swift in Sources */,
 				F6E27522C0C82C045BF4DA94 /* DCLAPAnalyzer.swift in Sources */,
 				3A1F6FA8BAA989BC7D8D348D /* DCLAPFrontend.swift in Sources */,
+				C81E137ADD4B580B65754CAC /* GenreAnalyzer.swift in Sources */,
+				817795A0AF6F9C9D617B9047 /* GenreFrontend.swift in Sources */,
 				6D2025A914D373472F350850 /* DiagnosticsView.swift in Sources */,
 				049D7805013D7A670CDC592D /* KeychainStore.swift in Sources */,
 				85CBB69767FD3D85207CC105 /* LibraryView.swift in Sources */,
@@ -518,6 +681,14 @@
 				93596B189F36C4357042E3DD /* SemanticModels.swift in Sources */,
 				4303E26EA3D3E43908C1E519 /* SongPoolStore.swift in Sources */,
 				595A99726312EDB46D353C78 /* SongPoolView.swift in Sources */,
+				BE4858E874614AAD0C13C310 /* AISettingsView.swift in Sources */,
+				DA353FE1443180AE794D4428 /* OpenRouterClient.swift in Sources */,
+				6DB1C81FBA9C17B4629A3BC1 /* RecommendationQuery.swift in Sources */,
+				4F88A5A451077933475C6EA1 /* ArtworkCache.swift in Sources */,
+				5199BDC5D558032E5C6D3DB8 /* CompanionClient.swift in Sources */,
+				A427FD3B7D08A45C9C53656E /* CompanionConnection.swift in Sources */,
+				8239F2E4CCE9758F94DC743E /* CompanionProtocol.swift in Sources */,
+				3B6214B18C3133B815E07EA6 /* CompanionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -525,6 +696,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8001A2DA812A678458E33B4A /* LyricsSearchView.swift in Sources */,
+				4631DB23E82DEDD3A5D39C5C /* LyricsAnalyzer.swift in Sources */,
+				884E62F81F051BF166D799BB /* BGEWordPiece.swift in Sources */,
+				E6A4CE80A7BCAEFA36C08445 /* LyricsModels.swift in Sources */,
 				AE0E83CB4FC326D90A39D1CD /* AcousticDSP.swift in Sources */,
 				AF8C1D16660EA6FEDF0BC8C7 /* AnalysisModels.swift in Sources */,
 				34BE0502241045664EEFB69D /* AppLog.swift in Sources */,
@@ -534,6 +709,8 @@
 				8AB0A1F2F03FBD2A28230BA7 /* CurrentTheme.swift in Sources */,
 				FB0A49E0F88C39EA6798462E /* DCLAPAnalyzer.swift in Sources */,
 				D9F1F7D4483DD2ACD3569326 /* DCLAPFrontend.swift in Sources */,
+				A08B82E2F414126AC4FC663A /* GenreAnalyzer.swift in Sources */,
+				444DC6A50084CB919BE31846 /* GenreFrontend.swift in Sources */,
 				ED0742DA7D06A037A7CE2A93 /* DiagnosticsView.swift in Sources */,
 				37EA70A57AA21493E80448CD /* KeychainStore.swift in Sources */,
 				BA9D6A3D0D545A4608CDF0D5 /* LibraryView.swift in Sources */,
@@ -548,6 +725,14 @@
 				AD9E6D38B70DFDAD09371E43 /* SemanticModels.swift in Sources */,
 				EF858544884C1AF9940C27B8 /* SongPoolStore.swift in Sources */,
 				4E2EA87DABD4BB39A8A3D864 /* SongPoolView.swift in Sources */,
+				B4F324D8286E9FC8E93495C5 /* AISettingsView.swift in Sources */,
+				C93042386E9A1FDEAE63237F /* OpenRouterClient.swift in Sources */,
+				CDC03966D4ADEC403CEDF079 /* RecommendationQuery.swift in Sources */,
+				C8E0C4DAF77A7FB798A51C29 /* ArtworkCache.swift in Sources */,
+				A79B12FCDFB3F4FB34762BC7 /* CompanionClient.swift in Sources */,
+				E7802504C6C3FEA4C5398A4D /* CompanionConnection.swift in Sources */,
+				4E896250B41DB034925499F2 /* CompanionProtocol.swift in Sources */,
+				3A7828557B58052FE289E4AE /* CompanionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -556,6 +741,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8F4BFF70ACD553B8830C9A08 /* CurrentTests.swift in Sources */,
+				7048346F2D88B4FFD1489687 /* PlaybackArtworkTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -564,6 +750,33 @@
 			buildActionMask = 2147483647;
 			files = (
 				7DF1329BBE858C9146F6CB98 /* CurrentUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		491FD2F93D7BBCDF2D64863B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20757A9B6CFDCBD0677FEB37 /* AcousticDSP.swift in Sources */,
+				567844C2A0CD8720665DE6D7 /* AnalysisModels.swift in Sources */,
+				A3FB5256FC6EB24463A35F56 /* AppLog.swift in Sources */,
+				F92441BBB87540A555F7F68D /* BGEWordPiece.swift in Sources */,
+				E1D2E7EC9FBDAC817A9698F2 /* CompanionApp.swift in Sources */,
+				8DF6761BA89B0F8B48BF8270 /* CompanionConnection.swift in Sources */,
+				C2C9612B8932ACF49DFDE44B /* CompanionProtocol.swift in Sources */,
+				1D554C81993F353E679A6CA8 /* CompanionWorker.swift in Sources */,
+				D6212BBBB251AE6C36730692 /* DCLAPAnalyzer.swift in Sources */,
+				221DA00E8D4823EBE7226026 /* DCLAPFrontend.swift in Sources */,
+				FB79B649141DA1B4248C2F21 /* GenreAnalyzer.swift in Sources */,
+				E036629B05B0427009403D66 /* GenreFrontend.swift in Sources */,
+				8EA0D5667F88E1023CC2C447 /* KeychainStore.swift in Sources */,
+				3E4B12F33AAF320EC170C85D /* LyricsAnalyzer.swift in Sources */,
+				232721AFEB1C1A4457903EAD /* LyricsModels.swift in Sources */,
+				4393BD25D2671C78A8210E3A /* Models.swift in Sources */,
+				40568ADCE2623E488DBC9034 /* NativeSongAnalyzer.swift in Sources */,
+				04304C5375A2EDBEE86F421A /* NetEaseAPI.swift in Sources */,
+				5A2686D82B6C1DE2E9E1F476 /* NetEaseCrypto.swift in Sources */,
+				636E54BB8C0A72252690BC1D /* SemanticModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1001,6 +1214,42 @@
 			};
 			name = Debug;
 		};
+		2A1F7739E8A9450AA7B076A0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/CurrentCompanion.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = "Config/Companion-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liupenghao.current.companion;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		BE3AD4377991D4A0331CE2BC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/CurrentCompanion.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = "Config/Companion-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liupenghao.current.companion;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1049,6 +1298,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		3AF0F23310148430319D6221 /* Build configuration list for PBXNativeTarget "CurrentCompanion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A1F7739E8A9450AA7B076A0 /* Debug */,
+				BE3AD4377991D4A0331CE2BC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1060,6 +1318,15 @@
 				version = 1.24.2;
 			};
 		};
+		AC4073CFEACF47956ADE4075 /* XCRemoteSwiftPackageReference "OpenAI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/MacPaw/OpenAI";
+			requirement = {
+				kind = exactVersion;
+				version = 0.5.3;
+			};
+		};
+		4247362795C5FA5E7D3A39CD /* XCRemoteSwiftPackageReference "swift-srp" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/adam-fowler/swift-srp"; requirement = {kind = exactVersion; version = 2.4.0; }; };
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1073,6 +1340,24 @@
 			package = 9B2B97201E9312617C5FADB5 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
 			productName = onnxruntime;
 		};
+		87756842BEA730DE68D6F33E /* OpenAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AC4073CFEACF47956ADE4075 /* XCRemoteSwiftPackageReference "OpenAI" */;
+			productName = OpenAI;
+		};
+		B0E0A3837C3345751E0B73B4 /* OpenAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AC4073CFEACF47956ADE4075 /* XCRemoteSwiftPackageReference "OpenAI" */;
+			productName = OpenAI;
+		};
+		CDDD1DD7B4DAEFE75C6CBE80 /* onnxruntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B2B97201E9312617C5FADB5 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
+			productName = onnxruntime;
+		};
+		AAEE6D6690FB597652CBC3FF /* SRP */ = {isa = XCSwiftPackageProductDependency; package = 4247362795C5FA5E7D3A39CD; productName = SRP; };
+		76AD98092AF4A5E71C1C67C3 /* SRP */ = {isa = XCSwiftPackageProductDependency; package = 4247362795C5FA5E7D3A39CD; productName = SRP; };
+		F396329A3269D9F2D41DF455 /* SRP */ = {isa = XCSwiftPackageProductDependency; package = 4247362795C5FA5E7D3A39CD; productName = SRP; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 96C1750311E8EED485D94656 /* Project object */;

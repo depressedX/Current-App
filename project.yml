@@ -15,6 +15,12 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 packages:
+  SwiftSRP:
+    url: https://github.com/adam-fowler/swift-srp
+    exactVersion: 2.4.0
+  OpenAI:
+    url: https://github.com/MacPaw/OpenAI
+    exactVersion: 0.5.3
   ONNXRuntime:
     url: https://github.com/microsoft/onnxruntime-swift-package-manager
     exactVersion: 1.24.2
@@ -29,12 +35,18 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
+      - package: SwiftSRP
+        product: SRP
+      - package: OpenAI
+        product: OpenAI
       - package: ONNXRuntime
         product: onnxruntime
     info:
       path: Config/Info.plist
       properties:
         CFBundleDisplayName: Current
+        NSLocalNetworkUsageDescription: 连接你的 Mac，在电脑分析歌曲并同步结果。
+        NSBonjourServices: [_current-an._tcp]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [audio]
@@ -56,12 +68,18 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
+      - package: SwiftSRP
+        product: SRP
+      - package: OpenAI
+        product: OpenAI
       - package: ONNXRuntime
         product: onnxruntime
     info:
       path: Config/CarPlay-Info.plist
       properties:
         CFBundleDisplayName: Current
+        NSLocalNetworkUsageDescription: 连接你的 Mac，在电脑分析歌曲并同步结果。
+        NSBonjourServices: [_current-an._tcp]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [audio]
@@ -77,6 +95,42 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.liupenghao.current
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Config/CurrentCarPlay.entitlements
+  CurrentCompanion:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: MacCompanion
+      - path: Current/Companion
+        excludes: [CompanionClient.swift]
+      - path: Current/Analysis
+        excludes: [SongPoolStore.swift]
+      - path: Current/Core/Models.swift
+      - path: Current/Core/NetEaseAPI.swift
+      - path: Current/Core/NetEaseCrypto.swift
+      - path: Current/Core/KeychainStore.swift
+      - path: Current/Diagnostics/AppLog.swift
+      - path: Current/Resources/Semantics
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: SwiftSRP
+        product: SRP
+      - package: ONNXRuntime
+        product: onnxruntime
+    info:
+      path: Config/Companion-Info.plist
+      properties:
+        LSMultipleInstancesProhibited: YES
+        CFBundleDisplayName: Current 分析伴侣
+        NSLocalNetworkUsageDescription: 连接你的 iPhone，接收分析任务并同步结果。
+        NSBonjourServices: [_current-an._tcp]
+        LSApplicationCategoryType: public.app-category.music
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.liupenghao.current.companion
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: Config/CurrentCompanion.entitlements
   CurrentTests:
     type: bundle.unit-test
     platform: iOS
@@ -108,3 +162,7 @@ schemes:
     build:
       targets:
         CurrentCarPlay: all
+  CurrentCompanion:
+    build:
+      targets:
+        CurrentCompanion: all

@@ -25,7 +25,7 @@ struct PlayerView: View {
                             Spacer()
                             Button { showQueue = true } label: { Image(systemName: "list.bullet").frame(width: 44, height: 44) }.accessibilityLabel("播放队列")
                         }.foregroundStyle(.primary)
-                        Artwork(track: track, radius: CurrentTheme.Radius.card)
+                        Artwork(track: track, radius: CurrentTheme.Radius.card, pixels: 768)
                             .frame(width: coverSide, height: coverSide)
                             .shadow(color: .black.opacity(0.10), radius: 18, y: 8)
                             .padding(.vertical, CurrentTheme.Space.small)
@@ -55,8 +55,11 @@ struct PlayerView: View {
                             } label: {
                                 ZStack {
                                     Circle().fill(.primary).frame(width: 64, height: 64)
-                                    if store.player.loading { ProgressView().tint(CurrentTheme.background) }
-                                    else { Image(systemName: store.player.playing ? "pause.fill" : "play.fill").font(CurrentTheme.Icon.play).foregroundStyle(CurrentTheme.background) }
+                                    Image(systemName: store.player.playing ? "pause.fill" : "play.fill")
+                                        .font(CurrentTheme.Icon.play).foregroundStyle(CurrentTheme.background)
+                                    if store.player.showLoading {
+                                        ProgressView().tint(CurrentTheme.accent).offset(x: 44)
+                                    }
                                 }
                             }.accessibilityLabel(store.player.playing ? "暂停" : "播放").accessibilityIdentifier("playerToggle")
                             Button { store.next() } label: { Image(systemName: "forward.end.fill").font(CurrentTheme.Icon.control).frame(width: 48, height: 48) }
@@ -65,6 +68,7 @@ struct PlayerView: View {
                         if let error = store.player.error {
                             Text(error).font(CurrentTheme.TypeScale.secondary).foregroundStyle(.orange).multilineTextAlignment(.center)
                         }
+                        RecommendationContinuationView()
                         HStack(spacing: CurrentTheme.Space.row) {
                             FeedbackChoiceButton(title: "不合适", symbol: "hand.thumbsdown") {
                                 let prompt = store.activePrompt

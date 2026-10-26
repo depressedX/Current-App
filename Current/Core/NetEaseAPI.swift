@@ -15,6 +15,9 @@ final class NetEaseAPI {
         config.timeoutIntervalForRequest = 20
         session = URLSession(configuration: config)
     }
+    // Exported only to an explicitly paired, encrypted companion session.
+    func companionCredentials() -> [String: String] { cookies }
+    func useCompanionCredentials(_ values: [String: String]) { epoch = UUID(); cookies = values }
     var hasCredentials: Bool { cookies["MUSIC_U"] != nil }
     func clear() { epoch = UUID(); cookies = [:]; if !ephemeral { KeychainStore.clear() } }
     func qrKey() async throws -> String {
@@ -79,9 +82,52 @@ final class NetEaseAPI {
                          duration: ((song["dt"] as? NSNumber)?.doubleValue ?? 0) / 1000, demoIndex: nil)
         }
     }
+    func lyrics(id: Int) async throws -> LyricsDocument {
+        let body = try await request("/song/lyric", ["id": id, "lv": -1, "tv": -1, "kv": -1])
+        return LyricsDocument(songID: id, original: (body["lrc"] as? [String: Any])?["lyric"] as? String ?? "",
+                              translation: (body["tlyric"] as? [String: Any])?["lyric"] as? String ?? "", fetchedAt: Date())
+    }
     func songBPM(id: Int) async throws -> Double? {
+        try await songWiki(id: id).bpm
+    }
+    func songWiki(id: Int) async throws -> SongWikiMetadata {
         let body = try await request("/song/play/about/block/page", ["songId": id], eapi: true, timeout: 8)
-        return Self.parseWikiBPM(body)
+        return Self.parseSongWiki(body, songID: id)
+    }
+    nonisolated static func parseSongWiki(_ body: [String: Any], songID: Int, fetchedAt: Date = Date()) -> SongWikiMetadata {
+        let blocks = (body["data"] as? [String: Any])?["blocks"] as? [[String: Any]] ?? []
+        var fields: [SongWikiField] = []
+        for block in blocks {
+            let heading = ((block["uiElement"] as? [String: Any])?["mainTitle"] as? [String: Any])?["title"] as? String
+            guard block["showType"] as? String == "SONG_PLAY_ABOUT_TAB_SONG_BASIC"
+                    || block["code"] as? String == "SONG_PLAY_ABOUT_SONG_BASIC" || heading == "音乐百科" else { continue }
+            for creative in block["creatives"] as? [[String: Any]] ?? [] {
+                let kind = creative["creativeType"] as? String ?? ""
+                // Action cards, scores, comments and recommendations are not song attributes.
+                guard !["sheet", "songComment", "songAward"].contains(kind) else { continue }
+                let ui = creative["uiElement"] as? [String: Any] ?? [:]
+                guard let title = (ui["mainTitle"] as? [String: Any])?["title"] as? String,
+                      !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                var values: [String] = []
+                func append(_ raw: Any?) {
+                    let text = (raw as? String) ?? (raw as? NSNumber)?.stringValue ?? ""
+                    let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !value.isEmpty && !values.contains(value) { values.append(value) }
+                }
+                for link in ui["textLinks"] as? [[String: Any]] ?? [] { append(link["text"]) }
+                for resource in creative["resources"] as? [[String: Any]] ?? [] {
+                    if resource["valid"] as? Bool == false { continue }
+                    let resourceUI = resource["uiElement"] as? [String: Any] ?? [:]
+                    append((resourceUI["mainTitle"] as? [String: Any])?["title"])
+                    for link in resourceUI["textLinks"] as? [[String: Any]] ?? [] { append(link["text"]) }
+                }
+                if !values.isEmpty {
+                    let field = SongWikiField(kind: kind, title: title, values: values)
+                    if !fields.contains(field) { fields.append(field) }
+                }
+            }
+        }
+        return SongWikiMetadata(songID: songID, fetchedAt: fetchedAt, bpm: parseWikiBPM(body), fields: fields)
     }
     nonisolated static func parseWikiBPM(_ body: [String: Any]) -> Double? {
         guard let data = body["data"] as? [String: Any], let blocks = data["blocks"] as? [[String: Any]] else { return nil }

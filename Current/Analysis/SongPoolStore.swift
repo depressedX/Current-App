@@ -13,22 +13,38 @@ final class SongPoolStore: ObservableObject {
     @Published private(set) var constrained = false
     private let disk: PoolDisk
     private let semanticDisk: SemanticDisk
+    private let lyricsDisk: LyricsDisk
+    private let fetchLyrics: (@MainActor (Track) async throws -> LyricsDocument)?
+    private let lyricsAnalyze: @Sendable (LyricsDocument) async throws -> LyricsAnalysis
+    private let lyricsQuery: @Sendable (String) async throws -> [Float]
+    @Published private(set) var lyricsSearching = false
+    private let genreAnalyze: (@Sendable (URL) async throws -> GenreAnalysis)?
     private let semanticAnalyze: (@Sendable (URL) async throws -> SemanticAnalysis)?
     private let concepts: ConceptCatalog?
     private let intentResolver: any ListeningIntentResolving
     private let resolve: @MainActor (Track) async throws -> URL
+    private let fetchWiki: (@MainActor (Track) async throws -> SongWikiMetadata)?
     private let fetchBPM: (@MainActor (Track) async throws -> Double?)?
     private let analyze: @Sendable (URL) async throws -> AcousticFeatures
     private var task: Task<Void, Never>?
     private var epoch = UUID()
     private var revision = 0
+    private var localRunIDs: Set<UUID> = []
+    var onLocalAnalysis: (([UUID]) -> Void)?
     private var observers: [NSObjectProtocol] = []
     var songs: [PoolSong] { catalog.songs.filter { $0.account == account } }
     var completedCount: Int { songs.filter { $0.state == .completed }.count }
+    var localRunning: Bool {
+        !paused && songs.contains { localRunIDs.contains($0.id) && ($0.state == .queued || $0.state.active) }
+    }
     var pendingCount: Int { songs.filter { $0.state != .completed && $0.state != .failed }.count }
     var waitReason: String? {
         if loading { return "正在恢复歌曲池" }
-        if paused { return "已暂停" }
+        if lyricsSearching { return "正在检索歌词" }
+        if paused || !localRunning {
+            if songs.contains(where: { $0.remotePending == true }) { return "等待 Mac 分析与同步" }
+            return localRunIDs.isEmpty ? "选择 Mac 或本机，手动开始分析" : "本机分析已暂停"
+        }
         if !foreground { return "回到 App 后继续" }
         if playbackBusy { return "听歌优先，播放结束后继续" }
         if constrained { return "节能或设备温度较高，稍后继续" }
@@ -36,16 +52,25 @@ final class SongPoolStore: ObservableObject {
     }
     init(fileURL: URL? = nil, resolve: @escaping @MainActor (Track) async throws -> URL,
          fetchBPM: (@MainActor (Track) async throws -> Double?)? = nil,
+         fetchWiki: (@MainActor (Track) async throws -> SongWikiMetadata)? = nil,
          semanticAnalyze: (@Sendable (URL) async throws -> SemanticAnalysis)? = nil,
          concepts: ConceptCatalog? = nil,
+         fetchLyrics: (@MainActor (Track) async throws -> LyricsDocument)? = nil,
+         lyricsAnalyze: @escaping @Sendable (LyricsDocument) async throws -> LyricsAnalysis = { try await LyricsAnalyzer.analyze($0) },
+         lyricsQuery: @escaping @Sendable (String) async throws -> [Float] = { try await LyricsAnalyzer.query($0) },
+         genreAnalyze: (@Sendable (URL) async throws -> GenreAnalysis)? = nil,
          intentResolver: any ListeningIntentResolving = MockListeningIntentResolver(),
          analyze: @escaping @Sendable (URL) async throws -> AcousticFeatures = { try await NativeSongAnalyzer.analyze(url: $0) }) {
         self.resolve = resolve; self.analyze = analyze; self.fetchBPM = fetchBPM
+        self.fetchWiki = fetchWiki
         self.semanticAnalyze = semanticAnalyze; self.concepts = concepts
+        self.genreAnalyze = genreAnalyze
+        self.fetchLyrics = fetchLyrics; self.lyricsAnalyze = lyricsAnalyze; self.lyricsQuery = lyricsQuery
         self.intentResolver = intentResolver
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Current")
         let archive = fileURL ?? folder.appendingPathComponent("song-pool.json")
         disk = PoolDisk(url: archive)
+        lyricsDisk = LyricsDisk(directory: archive.deletingLastPathComponent().appendingPathComponent("LyricsAnalysis"))
         semanticDisk = SemanticDisk(directory: archive.deletingLastPathComponent().appendingPathComponent("SongAnalysis"))
         for name in [ProcessInfo.thermalStateDidChangeNotification, Notification.Name.NSProcessInfoPowerStateDidChange] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -70,7 +95,7 @@ final class SongPoolStore: ObservableObject {
     func activate(account: String) {
         guard self.account != account else { return }
         AppLog.shared.record(.analysis, .accountChanged, operation: .pool, reason: .scopeChanged)
-        stop(); epoch = UUID(); self.account = account; paused = true
+        stop(); epoch = UUID(); localRunIDs = []; self.account = account; paused = true
     }
     @discardableResult func enqueue(_ tracks: [Track], source: String) -> Int {
         guard !loading, failure == nil else { return 0 }
@@ -80,13 +105,13 @@ final class SongPoolStore: ObservableObject {
     }
     func analyzeHearing() {
         guard !loading, failure == nil else { return }
-        for i in catalog.songs.indices where catalog.songs[i].account == account && catalog.songs[i].state == .completed && !catalog.songs[i].semanticReady {
+        for i in catalog.songs.indices where catalog.songs[i].account == account && catalog.songs[i].state == .completed && (!catalog.songs[i].semanticReady || catalog.songs[i].features?.profile?.version != ObjectiveProfile.currentVersion || (genreAnalyze != nil && catalog.songs[i].genres?.compatible != true)) {
             catalog.songs[i].needsReanalysis = true
             catalog.songs[i].state = .queued
         }
         persist(); resume()
     }
-    func mockSemanticQueue(text: String) async throws -> (tracks: [Track], anchor: String) {
+    func mockSemanticQueue(text: String, limit: Int? = 12) async throws -> (tracks: [Track], anchor: String) {
         guard let concepts else { throw SemanticError.missingResource }
         let scope = account
         let anchor = try await intentResolver.resolve(text: text, catalog: concepts)
@@ -96,6 +121,28 @@ final class SongPoolStore: ObservableObject {
         _ = try EmbeddingMath.unit(anchor.vector)
         let candidates = songs.filter(\.semanticReady)
         guard !candidates.isEmpty else { throw CurrentError.message("先在我的 → 歌曲池完成听感分析。") }
+        let tracks = try await rank(candidates, scope: scope) { vector, _ in try EmbeddingMath.cosine(anchor.vector, vector) }
+        return (limit.map { Array(tracks.prefix(max(0, $0))) } ?? tracks, anchor.label)
+    }
+    var intentConcepts: [IntentConcept] {
+        concepts?.concepts.map { IntentConcept(id: $0.id, label: $0.label, definition: $0.definition) } ?? []
+    }
+    func recommendationQueue(query: RecommendationQuery) async throws -> [Track] {
+        guard let concepts else { throw SemanticError.missingResource }
+        let query = try query.validated(allowedConcepts: Set(concepts.concepts.map(\.id)))
+        let terms = query.preferences.compactMap { preference -> (ListeningConcept, Double)? in
+            guard let concept = concepts.concepts.first(where: { $0.id == preference.concept }) else { return nil }
+            return (concept, preference.weight * (preference.direction == .prefer ? 1 : -1))
+        }
+        let candidates = songs.filter { $0.semanticReady && (!query.bpmRequired || query.matchesBPM($0.resolvedBPM)) }
+        guard !candidates.isEmpty else { throw CurrentError.message("没有满足条件且已完成听感分析的歌曲。可调整条件或补充歌曲池；未知 BPM 不计为满足范围。") }
+        return try await rank(candidates, scope: account) { vector, song in
+            let semantic = try terms.reduce(0.0) { score, term in score + term.1 * (try EmbeddingMath.cosine(term.0.vector, vector)) }
+            return semantic + query.bpmPreference(song.resolvedBPM)
+        }
+    }
+    private func rank(_ candidates: [PoolSong], scope: String,
+                      score: ([Float], PoolSong) throws -> Double) async throws -> [Track] {
         var ranked: [(Track, Double)] = []
         for song in candidates {
             try Task.checkCancellation()
@@ -103,7 +150,7 @@ final class SongPoolStore: ObservableObject {
             guard let semantic = song.semantic else { continue }
             do {
                 let vector = try await semanticDisk.load(semantic, songID: song.id, account: scope)
-                ranked.append((song.track, try EmbeddingMath.cosine(anchor.vector, vector)))
+                ranked.append((song.track, try score(vector, song)))
             } catch {
                 guard scope == account else { throw CancellationError() }
                 AppLog.shared.record(.storage, .failed, level: .error, operation: .semanticLoad, job: song.id, error: error)
@@ -118,12 +165,18 @@ final class SongPoolStore: ObservableObject {
         }
         guard scope == account else { throw CancellationError() }
         ranked.sort { $0.1 == $1.1 ? $0.0.id < $1.0.id : $0.1 > $1.1 }
-        return (Array(ranked.prefix(12).map { $0.0 }), anchor.label)
+        return ranked.map { $0.0 }
     }
     func contains(_ track: Track) -> Bool { songs.contains { $0.track.id == track.id } }
     func resume() {
         AppLog.shared.record(.analysis, .resumed, operation: .pool, reason: .user)
-        paused = false; pump()
+        let ids = songs.filter { $0.state == .queued }.map(\.id)
+        onLocalAnalysis?(ids)
+        localRunIDs = Set(ids)
+        for i in catalog.songs.indices where catalog.songs[i].account == account && localRunIDs.contains(catalog.songs[i].id) {
+            catalog.songs[i].remotePending = nil; catalog.songs[i].remoteRequestID = nil
+        }
+        paused = false; persist(); pump()
     }
     func pause() {
         AppLog.shared.record(.analysis, .paused, operation: .pool, reason: .user)
@@ -159,11 +212,118 @@ final class SongPoolStore: ObservableObject {
         catalog.songs[i].state = .queued
         persist(); resume()
     }
+    func refreshWiki(_ id: UUID) {
+        guard !loading, failure == nil, let i = index(id), !catalog.songs[i].track.isDemo,
+              catalog.songs[i].state == .completed, fetchWiki != nil else { return }
+        catalog.songs[i].state = .queued
+        persist(); resume()
+    }
+    var lyricsCount: Int { songs.filter { $0.lyrics?.compatible == true && $0.lyrics?.status == .indexed }.count }
+    func indexLyrics(_ id: UUID) {
+        guard !loading, failure == nil, fetchLyrics != nil, let i = index(id),
+              !catalog.songs[i].track.isDemo, catalog.songs[i].state == .completed || catalog.songs[i].state == .failed else { return }
+        catalog.songs[i].lyricsReturnState = catalog.songs[i].state
+        catalog.songs[i].needsLyricsReindex = true
+        catalog.songs[i].state = .queued
+        persist(); resume()
+    }
+    func indexMissingLyrics() {
+        guard !loading, failure == nil, fetchLyrics != nil else { return }
+        for song in songs where (song.state == .completed || song.state == .failed) && !song.track.isDemo && (song.lyrics?.compatible != true || song.lyricsFailure == true) {
+            guard let i = index(song.id), fetchLyrics != nil else { continue }
+            catalog.songs[i].lyricsReturnState = catalog.songs[i].state
+            catalog.songs[i].needsLyricsReindex = true
+            catalog.songs[i].state = .queued
+        }
+        persist(); resume()
+    }
+    func searchLyrics(_ text: String) async throws -> LyricsSearchResults {
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, query.count <= 512 else { throw LyricsError.tooLong }
+        guard !lyricsSearching else { throw CurrentError.message("请等待当前歌词检索完成") }
+        let scope = account, ticket = epoch
+        let entries = songs.compactMap { song -> LyricsSearchEntry? in
+            guard let summary = song.lyrics, summary.compatible, summary.status == .indexed else { return nil }
+            return LyricsSearchEntry(songID: song.id, track: song.track, summary: summary)
+        }
+        guard !entries.isEmpty else { throw CurrentError.message("先在歌曲池完成歌词索引") }
+        lyricsSearching = true
+        stop() // Drain the serial analyser before loading another model session.
+        defer { lyricsSearching = false; pump() }
+        let span = UUID(), began = Date()
+        AppLog.shared.record(.analysis, .started, operation: .lyricsSearch, span: span)
+        do {
+            while task != nil { try await Task.sleep(for: .milliseconds(10)) }
+            try Task.checkCancellation()
+            guard scope == account, ticket == epoch else { throw CancellationError() }
+            let vector = try await lyricsQuery(query)
+            let result = try await lyricsDisk.search(vector, entries: entries, account: scope)
+            try Task.checkCancellation()
+            guard scope == account, ticket == epoch else { throw CancellationError() }
+            // Removed/reindexed songs must not return stale results after an await.
+            let current = Dictionary(songs.map { ($0.id, $0.lyrics?.recordID) }, uniquingKeysWith: { a, _ in a })
+            let expected = Dictionary(entries.map { ($0.songID, $0.summary.recordID) }, uniquingKeysWith: { a, _ in a })
+            let valid = result.matches.filter { current[$0.id] != nil && current[$0.id] == expected[$0.id] }
+            AppLog.shared.record(.analysis, .succeeded, operation: .lyricsSearch, span: span, count: valid.count, elapsed: Date().timeIntervalSince(began))
+            return LyricsSearchResults(matches: valid, unavailableCount: result.unavailableCount, indexedSongs: result.indexedSongs)
+        } catch {
+            AppLog.shared.record(.analysis, Task.isCancelled ? .cancelled : .failed, level: .warning, operation: .lyricsSearch, span: span, error: error)
+            throw error
+        }
+    }
     func remove(_ id: UUID) {
         guard let i = index(id) else { return }
         if catalog.songs[i].state.active { stop() }
         catalog.songs.removeAll { $0.id == id && $0.account == account }
         persist(); pump()
+    }
+    func companionReady(_ song: PoolSong) -> Bool {
+        song.semanticReady && song.features?.profile?.version == ObjectiveProfile.currentVersion &&
+        song.genres?.compatible == true && song.lyrics?.compatible == true && song.lyricsFailure != true
+    }
+    func reserveCompanion(_ ids: Set<UUID>, requests: [UUID: UUID] = [:]) {
+        pause()
+        for i in catalog.songs.indices where catalog.songs[i].account == account && ids.contains(catalog.songs[i].id) {
+            catalog.songs[i].remotePending = true; catalog.songs[i].remoteRequestID = requests[catalog.songs[i].id]
+            catalog.songs[i].state = .queued
+        }
+        persist()
+    }
+    /// ACK only after vectors and the catalogue are durably stored. Never accept
+    /// results for removed songs, a previous account, or a superseded local run.
+    func importCompanion(_ result: CompanionResult) async throws {
+        guard result.account == account, let initial = index(result.jobID),
+              catalog.songs[initial].track.id == result.trackID,
+              catalog.songs[initial].remotePending == true, catalog.songs[initial].remoteRequestID == result.requestID else { return }
+        guard !loading, failure == nil, let concepts else { throw SemanticError.storage }
+        try result.validate()
+        guard result.wiki == nil || result.wiki?.songID == result.trackID else { throw SemanticError.incompatible }
+        let ticket = epoch, scope = account
+        let semantic = try await semanticDisk.save(SemanticAnalysis(vector: result.vector, windowStarts: result.windowStarts,
+            elapsedSeconds: result.semanticElapsed), songID: result.jobID, account: scope, catalog: concepts)
+        var lyrics: LyricsSummary?
+        if let analysis = result.lyrics { lyrics = try await lyricsDisk.save(analysis, songID: result.jobID, account: scope) }
+        guard ticket == epoch, let i = index(result.jobID), catalog.songs[i].remotePending == true, catalog.songs[i].remoteRequestID == result.requestID else { return }
+        let old = catalog.songs[i]
+        catalog.songs[i].features = result.features; catalog.songs[i].genres = result.genres
+        catalog.songs[i].semantic = semantic
+        if let lyrics { catalog.songs[i].lyrics = lyrics }
+        catalog.songs[i].lyricsFailure = lyrics == nil ? true : nil
+        if let wiki = result.wiki {
+            catalog.songs[i].wikiMetadata = wiki
+            if let bpm = wiki.bpm, bpm.isFinite, (20...400).contains(bpm) {
+                catalog.songs[i].wikiBPM = WikiBPM(value: bpm, fetchedAt: Date()); catalog.songs[i].bpmLookup = .available
+            } else { catalog.songs[i].wikiBPM = nil; catalog.songs[i].bpmLookup = .missing }
+        }
+        catalog.songs[i].remotePending = nil; catalog.songs[i].remoteRequestID = nil; catalog.songs[i].needsReanalysis = nil
+        catalog.songs[i].needsLyricsReindex = nil; catalog.songs[i].lyricsReturnState = nil
+        catalog.songs[i].state = .completed; catalog.songs[i].failure = nil; catalog.songs[i].finishedAt = Date()
+        revision += 1
+        do { try await disk.save(catalog, revision: revision) }
+        catch {
+            if ticket == epoch, let current = index(result.jobID), catalog.songs[current].semantic?.recordID == semantic.recordID { catalog.songs[current] = old }
+            throw SemanticError.storage
+        }
     }
     private func index(_ id: UUID) -> Int? { catalog.songs.firstIndex { $0.id == id && $0.account == account } }
     private func refreshConstraints() {
@@ -179,23 +339,31 @@ final class SongPoolStore: ObservableObject {
         if !loading && failure == nil { persist() }
     }
     private func pump() {
-        guard task == nil, waitReason == nil, failure == nil,
-              let song = songs.first(where: { $0.state == .queued }) else { return }
+        guard task == nil, waitReason == nil, failure == nil else { return }
+        guard let song = songs.first(where: { $0.state == .queued && localRunIDs.contains($0.id) && $0.remotePending != true }) else { return }
         let ticket = epoch
-        update(song.id, state: !song.track.isDemo && fetchBPM != nil ? .readingMetadata : .fetching)
+        update(song.id, state: !song.track.isDemo && (fetchWiki != nil || fetchBPM != nil) ? .readingMetadata : .fetching)
         task = Task {
             await LogScope.$trace.withValue(song.id) {
                 defer { task = nil; pump() }
-                let fullRun = song.needsReanalysis == true
+                let lyricsOnly = song.needsLyricsReindex == true || song.lyricsReturnState != nil
+                let fullRun = song.needsReanalysis == true && !lyricsOnly
                 var pendingWiki = song.wikiBPM
+                var pendingMetadata = song.wikiMetadata
                 var pendingLookup = song.bpmLookup
                 var pendingCheckedAt = song.bpmCheckedAt
                 var temporary: URL?
                 defer { if let temporary { try? FileManager.default.removeItem(at: temporary) } }
                 do {
-                    if !song.track.isDemo, (song.wikiBPM == nil || fullRun), let fetchBPM {
+                    if !lyricsOnly, !song.track.isDemo, fetchWiki != nil || ((song.wikiBPM == nil || fullRun) && fetchBPM != nil) {
                         do {
-                            let value = try await fetchBPM(song.track)
+                            let value: Double?
+                            if let fetchWiki {
+                                let metadata = try await fetchWiki(song.track)
+                                guard metadata.songID == song.track.id else { throw CurrentError.message("百科歌曲信息不匹配") }
+                                pendingMetadata = metadata
+                                value = metadata.bpm
+                            } else { value = try await fetchBPM?(song.track) }
                             try Task.checkCancellation()
                             guard ticket == epoch, let i = index(song.id) else { return }
                             if let value, value.isFinite, (20...400).contains(value) {
@@ -205,6 +373,7 @@ final class SongPoolStore: ObservableObject {
                             pendingCheckedAt = Date()
                             if !fullRun {
                                 catalog.songs[i].wikiBPM = pendingWiki
+                                catalog.songs[i].wikiMetadata = pendingMetadata
                                 catalog.songs[i].bpmLookup = pendingLookup
                                 catalog.songs[i].bpmCheckedAt = pendingCheckedAt
                                 persist()
@@ -223,9 +392,39 @@ final class SongPoolStore: ObservableObject {
                             AppLog.shared.record(.analysis, .failed, level: .warning, operation: .songWiki, job: song.id, error: error)
                         }
                     }
+                    if !song.track.isDemo, let fetchLyrics,
+                       fullRun || song.needsLyricsReindex == true || (song.features == nil && song.lyrics == nil) {
+                        update(song.id, state: .readingLyrics)
+                        do {
+                            let document = try await fetchLyrics(song.track)
+                            guard document.songID == song.track.id else { throw LyricsError.incompatible }
+                            let analysis = try await lyricsAnalyze(document)
+                            try Task.checkCancellation()
+                            guard ticket == epoch, index(song.id) != nil else { return }
+                            let summary = try await lyricsDisk.save(analysis, songID: song.id, account: song.account)
+                            try Task.checkCancellation()
+                            guard ticket == epoch, let i = index(song.id) else { return }
+                            catalog.songs[i].lyrics = summary
+                            catalog.songs[i].lyricsFailure = nil
+                            catalog.songs[i].needsLyricsReindex = nil
+                            persist()
+                        } catch {
+                            try Task.checkCancellation()
+                            guard ticket == epoch, let i = index(song.id) else { return }
+                            catalog.songs[i].lyricsFailure = true
+                            catalog.songs[i].needsLyricsReindex = nil
+                            AppLog.shared.record(.analysis, .failed, level: .warning, operation: .lyricsIndex, job: song.id, error: error)
+                            persist() // Independent failure: audio/encyclopedia results remain usable.
+                        }
+                    }
                     try Task.checkCancellation()
                     guard ticket == epoch, let current = index(song.id) else { return }
                     // Metadata backfill reuses existing acoustic results; no audio re-download.
+                    if lyricsOnly {
+                        let restored: AnalysisState = song.lyricsReturnState == .failed ? .failed : .completed
+                        catalog.songs[current].lyricsReturnState = nil
+                        update(song.id, state: restored); return
+                    }
                     if catalog.songs[current].features != nil && !fullRun { update(song.id, state: .completed); return }
                     update(song.id, state: .fetching)
                     let source = try await resolve(song.track)
@@ -240,6 +439,8 @@ final class SongPoolStore: ObservableObject {
                     guard ticket == epoch, index(song.id) != nil else { return }
                     update(song.id, state: .analyzing)
                     let result = try await analyze(local)
+                    let genres = try await genreAnalyze?(local)
+                    try Task.checkCancellation()
                     var semantic: SemanticFeatures?
                     if let semanticAnalyze {
                         guard let concepts else { throw SemanticError.missingResource }
@@ -258,12 +459,14 @@ final class SongPoolStore: ObservableObject {
                     guard ticket == epoch, let i = index(song.id) else { return }
                     if fullRun {
                         catalog.songs[i].wikiBPM = pendingWiki
+                        catalog.songs[i].wikiMetadata = pendingMetadata
                         catalog.songs[i].bpmLookup = pendingLookup
                         catalog.songs[i].bpmCheckedAt = pendingCheckedAt
                     }
                     catalog.songs[i].needsReanalysis = nil
                     catalog.songs[i].failure = nil
                     catalog.songs[i].features = result
+                    catalog.songs[i].genres = genres
                     catalog.songs[i].semantic = semantic
                     catalog.songs[i].finishedAt = Date()
                     update(song.id, state: .completed)
@@ -283,6 +486,8 @@ final class SongPoolStore: ObservableObject {
         }
     }
     static func safeMessage(_ error: Error, stage: AnalysisState) -> String {
+        if let known = error as? LyricsError { return known.localizedDescription }
+        if let known = error as? GenreError { return known.localizedDescription }
         if let known = error as? SemanticError { return known.localizedDescription }
         if let known = error as? AnalysisError { return known.localizedDescription }
         if let known = error as? CurrentError { return known.localizedDescription }
@@ -342,6 +547,14 @@ private actor PoolDisk {
         let data = try JSONEncoder().encode(catalog)
         try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         written = revision
+        let lyricsDirectory = url.deletingLastPathComponent().appendingPathComponent("LyricsAnalysis")
+        let lyricsKeep = Set(catalog.songs.compactMap { $0.lyrics?.recordID?.uuidString })
+        if let files = try? FileManager.default.contentsOfDirectory(at: lyricsDirectory, includingPropertiesForKeys: [.contentModificationDateKey]) {
+            for file in files where file.pathExtension == "json" && !lyricsKeep.contains(file.deletingPathExtension().lastPathComponent) {
+                if let date = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                   Date().timeIntervalSince(date) > 86_400 { try? FileManager.default.removeItem(at: file) }
+            }
+        }
         let directory = url.deletingLastPathComponent().appendingPathComponent("SongAnalysis")
         let keep = Set(catalog.songs.compactMap { $0.semantic?.recordID.uuidString })
         // Leave newly created files alone: a newer snapshot may already be waiting to save.

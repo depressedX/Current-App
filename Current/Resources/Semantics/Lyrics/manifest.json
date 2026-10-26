@@ -1,0 +1,15 @@
+{
+  "spaceID": "bge-small-zh-v1.5-int8-cls-v1",
+  "revision": "9507db33464b5da99a532ac26b2a251767cbc62b",
+  "hashes": {
+    "model_quantized.onnx": "99a6e522710c00220c89f8c52e0cc5aa09d4cbb1c34c0e932eab3a9dfdc65df3",
+    "model_quantized.onnx_data": "952623481ca8beea884e3d3c9ecaf8a3c7bf1d0c21de29e970cd31af9d37a90b",
+    "tokenizer.json": "3d09c84ebd10306706a79a8276b3ab736a40d8ec03251c7639f4e52c3a1a4f8e"
+  },
+  "dimensions": 512,
+  "maxTokens": 256,
+  "pooling": "CLS then L2",
+  "quantization": "INT8",
+  "tokenizer": "BertNormalizer(case-sensitive, no accent stripping), BertPreTokenizer, WordPiece",
+  "source": "https://huggingface.co/onnx-community/bge-small-zh-v1.5-ONNX"
+}

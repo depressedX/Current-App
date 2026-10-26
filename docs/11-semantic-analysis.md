@@ -1,5 +1,6 @@
 # 听感分析：当前工程方案
 
+> 客观特征新版见 [客观歌曲分析 v1](12-objective-song-profile.md)。DCLAP 相似度仍是实验结果，不作为确定分类。
 ## 分工
 
 | 位置 | 工作 | 随 App 分发 |
@@ -9,7 +10,8 @@
 | `Resources/Semantics/Models` | DCLAP 音频 ONNX 图 + 外部权重 | 是，合计 22,411,906 字节 |
 | `DCLAPFrontend` | Swift / Accelerate 音频前处理 | 是 |
 | `DCLAPEngine` | 官方 ONNX Runtime 1.24.2 原生绑定 | 是 |
-| `MockListeningIntentResolver` | 随机选择概念向量，测试匹配动线 | 是，明确标注模拟 |
+| `OpenRouterIntentResolver` | 解析 BPM 条件、听感概念和权重 | 是，个人 Key；默认 `openrouter/free` |
+| `MockListeningIntentResolver` | 随机选择概念向量 | 仅保留离线测试入口，生产生成不调用 |
 
 不做模型下载管理页。音频模型随 App 更新，文本模型只留在电脑。运行库也有体积，不能把 22.4 MB 说成 App 最终增量。当前没有 Core ML 转换；后续可以替换推理适配层，不改歌曲池和向量空间协议。
 
@@ -43,9 +45,9 @@ Application Support/Current/
 
 ## 查询链路（临时）
 
-文本输入 → `ListeningIntentResolving` → **随机选一个真实概念向量** → 当前账号已完成歌曲的音频向量 → 余弦排序 → 最多 12 首。
+文本输入 → `OpenRouterIntentResolver` → **JSON Schema 推荐查询** → 校验范围／概念／权重 → BPM 筛选 → 当前账号已完成歌曲的音频向量 → 听感加权排序 → 首批最多 12 首，剩余 3 首时补歌。
 
-输入文本只保留交互，不参与理解；界面明确提示“模拟意图”，返回消息给出实际选中的概念。缺少听感结果时提示先去歌曲池，不把随机歌曲伪装成语义结果。`ListeningIntentResolving` 是可注入的异步接口，返回同空间的向量与显示名称，支持取消和版本校验。下一步接语言模型，只需替换 resolver 并约束返回概念 ID／权重；不能直接混用其他 embedding 空间。
+网络层使用 `MacPaw/OpenAI 0.5.3`，请求 `/api/v1/chat/completions`，启用严格 `json_schema` 和 `provider.require_parameters`。模型返回概念 ID 和权重，App 查本地同空间概念向量，不接受模型生成的 embedding。Key 在「我的 → AI 设置」保存／清除／测试连接，仅存独立 Keychain 项；只发送本次需求及概念词表，不发送音频、完整歌单或网易云凭据。模型拒绝、输出截断、非法条件、免费额度不足和网络失败会明确提示，不回退随机选歌。
 
 反馈仍只属于 Current；没有同步网易云收藏，也还没有训练个性化权重。
 

@@ -17,18 +17,22 @@ struct RootView: View {
                 .tabItem { Label("我的", systemImage: "person") }.tag(2)
         }
         .environmentObject(store.pool)
+        .environmentObject(store.companion)
         .onAppear {
             store.pool.activate(account: store.listener.map { "netease:\($0.id)" } ?? "demo")
             store.pool.setForeground(scenePhase == .active)
+            store.companion.setForeground(scenePhase == .active)
             store.pool.setPlaybackBusy(store.player.playing || store.player.loading)
         }
         .onChange(of: store.scope) { _, value in
             store.pool.activate(account: value.map { "netease:\($0)" } ?? "demo")
+            store.companion.sendSession()
         }
         .onChange(of: scenePhase) { _, value in
             AppLog.shared.record(.app, .stateChanged, operation: .scene,
                                  reason: value == .active ? .active : value == .background ? .background : .inactive)
             store.pool.setForeground(value == .active)
+            store.companion.setForeground(value == .active)
         }
         .onChange(of: store.player.playing || store.player.loading) { _, value in store.pool.setPlaybackBusy(value) }
         .toolbarBackground(CurrentTheme.background, for: .tabBar)
@@ -40,7 +44,7 @@ struct RootView: View {
                             Artwork(track: track).frame(width: 42, height: 42)
                             VStack(alignment: .leading, spacing: CurrentTheme.Space.tiny) {
                                 Text(track.title).font(CurrentTheme.TypeScale.emphasis).lineLimit(1)
-                                Text(store.player.loading ? "正在加载…" : track.artist)
+                                Text(store.player.showLoading ? "正在加载…" : track.artist)
                                     .font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted).lineLimit(1)
                             }
                             Spacer(minLength: 0)
@@ -121,8 +125,10 @@ struct ListenView: View {
                         .foregroundStyle(CurrentTheme.muted).accessibilityIdentifier("enterDemo")
                 }.font(CurrentTheme.TypeScale.body).buttonStyle(CurrentPressStyle())
             } else {
-                Text("模拟意图 · 按歌曲池听感匹配，尚未理解文本")
-                    .font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
+                NavigationLink { AISettingsView() } label: {
+                    Text(store.openRouterConfigured ? "OpenRouter · 按需求匹配歌曲池" : "先填写个人 OpenRouter Key →")
+                        .font(CurrentTheme.TypeScale.caption)
+                }.accessibilityIdentifier("configureOpenRouter")
             }
             VStack(alignment: .leading, spacing: CurrentTheme.Space.row) {
                 Text("试试这些").font(CurrentTheme.TypeScale.section)
@@ -150,7 +156,7 @@ struct ListenView: View {
                 Text(store.accountLabel).font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
             }
         }
-        .onChange(of: store.queue) { _, _ in if !store.queue.isEmpty { composing = false } }
+        .onChange(of: store.activePrompt) { _, _ in composing = false }
     }
 }
 
@@ -164,11 +170,28 @@ struct QueueSection: View {
                 Spacer(); Text("\(store.queue.count) 首").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             }
             Text(store.activePrompt).font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
+            RecommendationContinuationView()
             LazyVStack(spacing: CurrentTheme.Space.tiny) {
-                ForEach(Array(store.queue.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(track: track, active: store.currentTrack?.id == track.id, liked: store.liked(track)) {
+                ForEach(Array(store.queue.enumerated()), id: \.offset) { index, track in
+                    TrackRow(track: track, active: store.currentIndex == index, liked: store.liked(track)) {
                         store.play(at: index); showPlayer = true
                     }
+                }
+            }
+        }
+    }
+}
+
+struct RecommendationContinuationView: View {
+    @EnvironmentObject private var store: AppStore
+    var body: some View {
+        if store.recommendationExhausted {
+            VStack(alignment: .leading, spacing: CurrentTheme.Space.row) {
+                Text(store.queueEnded ? "本轮候选已听完" : "本轮候选已全部加入队列")
+                    .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                if store.queueEnded {
+                    PrimaryButton(title: "允许重复继续听", symbol: "repeat") { store.continueWithRepeats() }
+                        .accessibilityIdentifier("continueWithRepeats")
                 }
             }
         }

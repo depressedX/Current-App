@@ -20,6 +20,12 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_current-an._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>连接你的 Mac，在电脑分析歌曲并同步结果。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

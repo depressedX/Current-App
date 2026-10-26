@@ -1,0 +1,5 @@
+BGE-small-zh-v1.5 by Beijing Academy of Artificial Intelligence (BAAI). Model card declares MIT.
+Original: https://huggingface.co/BAAI/bge-small-zh-v1.5
+Community INT8 ONNX export: https://huggingface.co/onnx-community/bge-small-zh-v1.5-ONNX
+Revision: 9507db33464b5da99a532ac26b2a251767cbc62b
+No weights modified. Both ONNX graph and external data are required.

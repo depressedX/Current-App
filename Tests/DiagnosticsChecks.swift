@@ -26,6 +26,13 @@ import Foundation
         let arbitrary = LogError(NSError(domain: secret, code: 1))
         precondition(arbitrary.domain == "Application")
         print("PASS trace/span/job correlation, numeric cause chain, strict privacy, environment export")
+        log.record(.companion, .failed, level: .error, operation: .companionPairingListener,
+                   error: NSError(domain: secret, code: -65555, userInfo: [NSLocalizedDescriptionKey: secret]))
+        let pairingLog = try await log.entries()
+        precondition(pairingLog.first?.operation == .companionPairingListener && pairingLog.first?.error?.code == -65555)
+        let pairingExport = try String(contentsOf: try await log.export(), encoding: .utf8)
+        precondition(!pairingExport.contains("private-cookie") && !pairingExport.contains("private-token"))
+        print("PASS pairing service failures retain numeric cause without credentials or free-form payloads")
 
         let oldWindow = Data(#"{"step":"shortWindow","windowStartMS":5000,"frames":478134,"expectedFrames":480000,"readerStatus":2,"sampleRate":48000,"channels":1}"#.utf8)
         let legacyWindow = try JSONDecoder().decode(LogAudioRead.self, from: oldWindow)

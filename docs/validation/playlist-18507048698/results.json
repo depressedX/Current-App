@@ -1,0 +1,710 @@
+[
+  {
+    "elapsed" : 0.6578530073165894,
+    "features" : {
+      "dynamicSpreadDB" : 6.304360053966974,
+      "elapsedSeconds" : 0.09086096286773682,
+      "peakDBFS" : 0.3208710292003729,
+      "profile" : {
+        "activeSeconds" : 163,
+        "classifiedWindows" : 54,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 162.5329931972789,
+        "largestRiseDB" : 11.23098260049845,
+        "loudnessSpreadDB" : 3.1149045916726728,
+        "rises" : [
+          {
+            "decibels" : 11.23098260049845,
+            "second" : 6
+          }
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 8
+          }
+        ],
+        "spectralChange" : 0.2278934856473601,
+        "spectralPeak" : 0.27392089794451835,
+        "uncertainVocalWindows" : 17,
+        "version" : "objective-v1",
+        "vocalWindows" : 30
+      },
+      "rhythmStrength" : 0.6913698499789257,
+      "rmsDBFS" : -13.965097471182206,
+      "sampleDuration" : 44.99972789115646,
+      "sampleStart" : 58.76577437641723,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1206.6295185458416
+    },
+    "track" : {
+      "album" : "Alter Egos",
+      "artist" : "Sean Lennon \/ Karla Moheno",
+      "artwork" : "https:\/\/p4.music.126.net\/lNn9QJZcJ3VNWz1_r3468w==\/2539871860492873.jpg",
+      "duration" : 162,
+      "id" : 27530429,
+      "title" : "My Hero"
+    }
+  },
+  {
+    "elapsed" : 2.2546589374542236,
+    "features" : {
+      "bpm" : 63.974854932301746,
+      "dynamicSpreadDB" : 17.695257302599874,
+      "elapsedSeconds" : 0.030636906623840332,
+      "peakDBFS" : 3.0373193178263347,
+      "profile" : {
+        "activeSeconds" : 247,
+        "classifiedWindows" : 82,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 248.768,
+        "largestRiseDB" : 22.22021576202848,
+        "loudnessSpreadDB" : 6.671499270643242,
+        "rises" : [
+          {
+            "decibels" : 22.22021576202848,
+            "second" : 3
+          },
+          {
+            "decibels" : 15.478368654315993,
+            "second" : 159
+          }
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 40
+          },
+          {
+            "label" : "贝斯",
+            "windows" : 25
+          },
+          {
+            "label" : "鼓",
+            "windows" : 10
+          },
+          {
+            "label" : "架子鼓",
+            "windows" : 9
+          },
+          {
+            "label" : "电吉他",
+            "windows" : 9
+          },
+          {
+            "label" : "萨克斯",
+            "windows" : 3
+          }
+        ],
+        "spectralChange" : 0.2458424150998854,
+        "spectralPeak" : 0.7151763215514958,
+        "uncertainVocalWindows" : 50,
+        "version" : "objective-v1",
+        "vocalWindows" : 12
+      },
+      "rhythmStrength" : 0.6007589209398783,
+      "rmsDBFS" : -9.067333094810529,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 101.88333333333334,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1339.2330197673552
+    },
+    "track" : {
+      "album" : "恋爱困难少女",
+      "artist" : "ChiliChill乐团",
+      "artwork" : "https:\/\/p4.music.126.net\/xI0AYr0U565OCOY1rkfnOQ==\/109951165463615830.jpg",
+      "duration" : 248.768,
+      "id" : 1494813207,
+      "title" : "恋爱困难少女"
+    }
+  },
+  {
+    "elapsed" : 2.1749210357666016,
+    "features" : {
+      "dynamicSpreadDB" : 12.650576385805664,
+      "elapsedSeconds" : 0.03902292251586914,
+      "peakDBFS" : 1.1788347616188533,
+      "profile" : {
+        "activeSeconds" : 323,
+        "classifiedWindows" : 109,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 328.12,
+        "largestRiseDB" : 8.47321383755867,
+        "loudnessSpreadDB" : 6.398541426673765,
+        "rises" : [
+          {
+            "decibels" : 8.47321383755867,
+            "second" : 5
+          }
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 85
+          },
+          {
+            "label" : "木吉他",
+            "windows" : 63
+          },
+          {
+            "label" : "电吉他",
+            "windows" : 4
+          }
+        ],
+        "spectralChange" : 0.21763180403828486,
+        "spectralPeak" : 0.3918705721070219,
+        "uncertainVocalWindows" : 50,
+        "version" : "objective-v1",
+        "vocalWindows" : 13
+      },
+      "rhythmStrength" : 0.6282676065467908,
+      "rmsDBFS" : -13.618857353799168,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 141.55927437641722,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1500.0565386266658
+    },
+    "track" : {
+      "album" : "トラベリン’・バンド",
+      "artist" : "KYOZO & BUN",
+      "artwork" : "https:\/\/p4.music.126.net\/tXW1pU1Oj_S8t3_schGFXg==\/109951168060294085.jpg",
+      "duration" : 328.12,
+      "id" : 1998395414,
+      "title" : "自転車にのって"
+    }
+  },
+  {
+    "elapsed" : 1.5675890445709229,
+    "features" : {
+      "bpm" : 139.85200845665963,
+      "dynamicSpreadDB" : 10.922614616465697,
+      "elapsedSeconds" : 0.021377921104431152,
+      "peakDBFS" : 3.0602463169664498,
+      "profile" : {
+        "activeSeconds" : 160,
+        "classifiedWindows" : 54,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 163.50698412698412,
+        "largestRiseDB" : 0,
+        "loudnessSpreadDB" : 3.412851307955508,
+        "rises" : [
+
+        ],
+        "soundLabels" : [
+          {
+            "label" : "合成器",
+            "windows" : 14
+          },
+          {
+            "label" : "鼓",
+            "windows" : 9
+          },
+          {
+            "label" : "吉他",
+            "windows" : 8
+          },
+          {
+            "label" : "贝斯",
+            "windows" : 3
+          },
+          {
+            "label" : "电吉他",
+            "windows" : 2
+          }
+        ],
+        "spectralChange" : 0.16846928170492448,
+        "spectralPeak" : 0.3180138054810155,
+        "uncertainVocalWindows" : 31,
+        "version" : "objective-v1",
+        "vocalWindows" : 0
+      },
+      "rhythmStrength" : 0.8509670704349037,
+      "rmsDBFS" : -9.543034427438915,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 59.252774376417236,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1027.9416210964664
+    },
+    "track" : {
+      "album" : "Sex Drugs Internet",
+      "artist" : "新裤子 \/ 赵怡文",
+      "artwork" : "https:\/\/p3.music.126.net\/mEjZ-3eUu_BGEscv4pVIzw==\/109951166578136994.jpg",
+      "duration" : 163.506,
+      "id" : 387485,
+      "title" : "After Party"
+    }
+  },
+  {
+    "elapsed" : 2.8378520011901855,
+    "features" : {
+      "dynamicSpreadDB" : 5.499164485420243,
+      "elapsedSeconds" : 0.03550398349761963,
+      "peakDBFS" : 3.4925142826783153,
+      "profile" : {
+        "activeSeconds" : 357,
+        "classifiedWindows" : 119,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 357.288,
+        "largestRiseDB" : 0,
+        "loudnessSpreadDB" : 4.609483616534892,
+        "rises" : [
+
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 50
+          },
+          {
+            "label" : "钢琴",
+            "windows" : 22
+          },
+          {
+            "label" : "木吉他",
+            "windows" : 14
+          },
+          {
+            "label" : "电钢琴",
+            "windows" : 6
+          },
+          {
+            "label" : "架子鼓",
+            "windows" : 2
+          }
+        ],
+        "spectralChange" : 0.15061529852832756,
+        "spectralPeak" : 0.30713824474811735,
+        "uncertainVocalWindows" : 77,
+        "version" : "objective-v1",
+        "vocalWindows" : 5
+      },
+      "rhythmStrength" : 0.7437614403042533,
+      "rmsDBFS" : -5.844762797265195,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 156.14333333333335,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1011.6970456803884
+    },
+    "track" : {
+      "album" : "台风来了",
+      "artist" : "野外合作社",
+      "artwork" : "https:\/\/p3.music.126.net\/YGFz1TSHuuELOtopwvsBLQ==\/109951164219859996.jpg",
+      "duration" : 357.288,
+      "id" : 1378463108,
+      "title" : "复活（Live）"
+    }
+  },
+  {
+    "elapsed" : 2.3781920671463013,
+    "features" : {
+      "bpm" : 113.46483704974271,
+      "dynamicSpreadDB" : 7.3947340696846275,
+      "elapsedSeconds" : 0.03593909740447998,
+      "peakDBFS" : 4.705427691648787,
+      "profile" : {
+        "activeSeconds" : 262,
+        "classifiedWindows" : 88,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 265.9,
+        "largestRiseDB" : 8.71368377856191,
+        "loudnessSpreadDB" : 4.928913344246867,
+        "rises" : [
+          {
+            "decibels" : 8.71368377856191,
+            "second" : 192
+          }
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 37
+          },
+          {
+            "label" : "架子鼓",
+            "windows" : 18
+          },
+          {
+            "label" : "鼓",
+            "windows" : 15
+          },
+          {
+            "label" : "电吉他",
+            "windows" : 14
+          },
+          {
+            "label" : "贝斯",
+            "windows" : 10
+          }
+        ],
+        "spectralChange" : 0.19618194761851326,
+        "spectralPeak" : 0.5290070630111356,
+        "uncertainVocalWindows" : 59,
+        "version" : "objective-v1",
+        "vocalWindows" : 10
+      },
+      "rhythmStrength" : 0.7189432033486665,
+      "rmsDBFS" : -6.935949948631083,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 110.44927437641724,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 2625.3100554098696
+    },
+    "track" : {
+      "album" : "Love 2000",
+      "artist" : "hitomi",
+      "artwork" : "https:\/\/p3.music.126.net\/wMXXw89oN47frslJ5Wt_YA==\/18537766046079739.jpg",
+      "duration" : 265.9,
+      "id" : 574547,
+      "title" : "Love 2000"
+    }
+  },
+  {
+    "elapsed" : 0.5267020463943481,
+    "features" : {
+      "dynamicSpreadDB" : 11.722021491939522,
+      "elapsedSeconds" : 0.021815061569213867,
+      "peakDBFS" : 3.3577236009620597,
+      "profile" : {
+        "activeSeconds" : 184,
+        "classifiedWindows" : 61,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 184.032,
+        "largestRiseDB" : 0,
+        "loudnessSpreadDB" : 7.019257597414203,
+        "rises" : [
+
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 10
+          },
+          {
+            "label" : "钢琴",
+            "windows" : 6
+          },
+          {
+            "label" : "合成器",
+            "windows" : 5
+          },
+          {
+            "label" : "萨克斯",
+            "windows" : 5
+          },
+          {
+            "label" : "鼓",
+            "windows" : 5
+          },
+          {
+            "label" : "架子鼓",
+            "windows" : 3
+          },
+          {
+            "label" : "电钢琴",
+            "windows" : 3
+          }
+        ],
+        "spectralChange" : 0.27603891074272496,
+        "spectralPeak" : 0.5121025079113204,
+        "uncertainVocalWindows" : 2,
+        "version" : "objective-v1",
+        "vocalWindows" : 0
+      },
+      "rhythmStrength" : 0.7027497461649039,
+      "rmsDBFS" : -8.302407154649167,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 69.51533333333333,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 823.7177523225181
+    },
+    "track" : {
+      "album" : "给你的BGM Vol.1",
+      "artist" : "ChiliChill乐团",
+      "artwork" : "https:\/\/p3.music.126.net\/aaOzv8oNCq84WJIop_hZzA==\/109951165771311471.jpg",
+      "duration" : 184.032,
+      "id" : 1457099566,
+      "title" : "Coolest Dog On The Street"
+    }
+  },
+  {
+    "failure" : "这首歌仅提供试听，请在网易云确认账号播放权限。",
+    "track" : {
+      "album" : "ハルカリベーコン",
+      "artist" : "HALCALI",
+      "artwork" : "https:\/\/p4.music.126.net\/xZTUfNEdUHNDK3-wsXlIVQ==\/109951164975063147.jpg",
+      "duration" : 239.568,
+      "id" : 22780059,
+      "title" : "おつかれSUMMER"
+    }
+  },
+  {
+    "elapsed" : 1.6524319648742676,
+    "features" : {
+      "dynamicSpreadDB" : 6.788490673464554,
+      "elapsedSeconds" : 0.02219092845916748,
+      "peakDBFS" : 3.36835619061864,
+      "profile" : {
+        "activeSeconds" : 633,
+        "classifiedWindows" : 211,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 635.848,
+        "largestRiseDB" : 15.014948636778167,
+        "loudnessSpreadDB" : 9.767328706636539,
+        "rises" : [
+          {
+            "decibels" : 6.071858596211367,
+            "second" : 117
+          },
+          {
+            "decibels" : 15.014948636778167,
+            "second" : 531
+          }
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 81
+          },
+          {
+            "label" : "电吉他",
+            "windows" : 30
+          },
+          {
+            "label" : "木吉他",
+            "windows" : 8
+          },
+          {
+            "label" : "鼓",
+            "windows" : 8
+          },
+          {
+            "label" : "贝斯",
+            "windows" : 6
+          },
+          {
+            "label" : "架子鼓",
+            "windows" : 3
+          },
+          {
+            "label" : "小提琴",
+            "windows" : 2
+          },
+          {
+            "label" : "萨克斯",
+            "windows" : 2
+          }
+        ],
+        "spectralChange" : 0.25728680084632904,
+        "spectralPeak" : 0.5704289728719508,
+        "uncertainVocalWindows" : 1,
+        "version" : "objective-v1",
+        "vocalWindows" : 0
+      },
+      "rhythmStrength" : 0.7576677298270849,
+      "rmsDBFS" : -7.924140910151092,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 295.42333333333335,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1313.4105893521944
+    },
+    "track" : {
+      "album" : "容器（Nothing Left）",
+      "artist" : "浅水ShallowEnd",
+      "artwork" : "https:\/\/p4.music.126.net\/g9xEuSPIonzY-lJ3Uk9K7w==\/109951173812619477.jpg",
+      "duration" : 635.847,
+      "id" : 3383229444,
+      "title" : "请柬 (Your Wedding)"
+    }
+  },
+  {
+    "elapsed" : 0.7432169914245605,
+    "features" : {
+      "dynamicSpreadDB" : 6.273890735158425,
+      "elapsedSeconds" : 0.02143096923828125,
+      "peakDBFS" : 2.9416456466656276,
+      "profile" : {
+        "activeSeconds" : 160,
+        "classifiedWindows" : 53,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 160.432,
+        "largestRiseDB" : 13.753766701437115,
+        "loudnessSpreadDB" : 9.354415502776568,
+        "rises" : [
+          {
+            "decibels" : 13.753766701437115,
+            "second" : 16
+          }
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 33
+          },
+          {
+            "label" : "木吉他",
+            "windows" : 9
+          }
+        ],
+        "spectralChange" : 0.25709656970917605,
+        "spectralPeak" : 0.39775175915755434,
+        "uncertainVocalWindows" : 27,
+        "version" : "objective-v1",
+        "vocalWindows" : 5
+      },
+      "rhythmStrength" : 0.7321636343939221,
+      "rmsDBFS" : -9.148968970440944,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 57.715333333333334,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1074.5642192126518
+    },
+    "track" : {
+      "album" : "where is my mice?",
+      "artist" : "鼠鼠鼠",
+      "artwork" : "https:\/\/p3.music.126.net\/voeT-ZUnfQ2s_iEtYOLAog==\/109951173332462517.jpg",
+      "duration" : 160.432,
+      "id" : 3390250233,
+      "title" : "我是你的老鼠"
+    }
+  },
+  {
+    "elapsed" : 1.2739369869232178,
+    "features" : {
+      "bpm" : 50.11363636363637,
+      "dynamicSpreadDB" : 13.499298388308407,
+      "elapsedSeconds" : 0.026075005531311035,
+      "peakDBFS" : 1.7651449542856523,
+      "profile" : {
+        "activeSeconds" : 199,
+        "classifiedWindows" : 69,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 207.0529931972789,
+        "largestRiseDB" : 11.949056446504374,
+        "loudnessSpreadDB" : 9.299624511406558,
+        "rises" : [
+          {
+            "decibels" : 11.46268451818201,
+            "second" : 5
+          },
+          {
+            "decibels" : 6.7410294514246605,
+            "second" : 29
+          },
+          {
+            "decibels" : 7.625411876658081,
+            "second" : 51
+          },
+          {
+            "decibels" : 8.573305782979531,
+            "second" : 63
+          },
+          {
+            "decibels" : 11.949056446504374,
+            "second" : 81
+          },
+          {
+            "decibels" : 7.700480892065874,
+            "second" : 163
+          }
+        ],
+        "soundLabels" : [
+          {
+            "label" : "吉他",
+            "windows" : 17
+          },
+          {
+            "label" : "木吉他",
+            "windows" : 13
+          },
+          {
+            "label" : "鼓",
+            "windows" : 2
+          }
+        ],
+        "spectralChange" : 0.3535455317463047,
+        "spectralPeak" : 0.5245377084125141,
+        "uncertainVocalWindows" : 29,
+        "version" : "objective-v1",
+        "vocalWindows" : 11
+      },
+      "rhythmStrength" : 0.6826771636590808,
+      "rmsDBFS" : -9.812753791330444,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 81.02577437641723,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1374.0777451468493
+    },
+    "track" : {
+      "album" : "快乐的夏天",
+      "artist" : "陈绮贞",
+      "artwork" : "https:\/\/p4.music.126.net\/DsX-6QWFFdXFwfucSAnrpQ==\/109951167854062463.jpg",
+      "duration" : 207.053,
+      "id" : 209216,
+      "title" : "送别"
+    }
+  },
+  {
+    "elapsed" : 0.6718759536743164,
+    "features" : {
+      "bpm" : 122.72727272727273,
+      "dynamicSpreadDB" : 11.229676936636245,
+      "elapsedSeconds" : 0.02041304111480713,
+      "peakDBFS" : 3.82977662503897,
+      "profile" : {
+        "activeSeconds" : 238,
+        "classifiedWindows" : 79,
+        "classifierAvailable" : true,
+        "decodedFraction" : 1,
+        "duration" : 238.51498866213151,
+        "largestRiseDB" : 0,
+        "loudnessSpreadDB" : 3.990852045211817,
+        "rises" : [
+
+        ],
+        "soundLabels" : [
+          {
+            "label" : "合成器",
+            "windows" : 22
+          },
+          {
+            "label" : "电钢琴",
+            "windows" : 2
+          },
+          {
+            "label" : "钢琴",
+            "windows" : 2
+          }
+        ],
+        "spectralChange" : 0.24293465464100386,
+        "spectralPeak" : 0.46403031429660574,
+        "uncertainVocalWindows" : 47,
+        "version" : "objective-v1",
+        "vocalWindows" : 6
+      },
+      "rhythmStrength" : 0.8608349436053486,
+      "rmsDBFS" : -6.556311880270011,
+      "sampleDuration" : 44.99963718820862,
+      "sampleStart" : 96.75677437641724,
+      "version" : "native-acoustic-v1",
+      "zeroCrossingsPerSecond" : 1002.785862723005
+    },
+    "track" : {
+      "album" : "Watashi",
+      "artist" : "iri",
+      "artwork" : "https:\/\/p4.music.126.net\/ax9OAzDByN6fyeDyPGLvSw==\/109951170216171592.jpg",
+      "duration" : 238.515,
+      "id" : 467952146,
+      "title" : "blue hour"
+    }
+  }
+]

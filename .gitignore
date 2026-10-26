@@ -9,3 +9,11 @@ Config/Signing.local.xcconfig
 Tools/PCPrecompute/.cache/
 Tools/PCPrecompute/.venv/
 **/__pycache__/
+
+# Generated genre correctness fixtures and host build.
+Tools/PCGenreReference/.cache/
+Tools/PCGenreReference/.venv/
+
+# Generated synthetic BGE parity references and host build.
+Tools/PCLyricsReference/.cache/
+Tools/PCLyricsReference/.venv/

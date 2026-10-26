@@ -36,6 +36,30 @@ struct HostCoreChecks {
             precondition(saved.id == event.id && saved.kind == kind && saved.listenerID == 123)
         }
         print("PASS queue bounds, exclusions, deduplication, feedback reason/account roundtrip")
+        let ranked = (0..<29).map { index in
+            Track(id: index, title: "Fixture", artist: "Fixture", album: "Fixture",
+                  artwork: nil, duration: 24, demoIndex: 0)
+        }
+        var run = RecommendationRun(rankedCandidates: ranked + ranked)
+        precondition(run.nextBatch().map(\.id) == Array(0..<12))
+        precondition(!run.shouldRefill(remaining: 4) && run.shouldRefill(remaining: 3))
+        precondition(run.nextBatch().map(\.id) == Array(12..<24))
+        precondition(run.nextBatch().map(\.id) == Array(24..<29))
+        precondition(run.exhausted && !run.shouldRefill(remaining: 0) && run.nextBatch().isEmpty)
+        var resumed = RecommendationRun(rankedCandidates: ranked, issued: Set(0..<24))
+        precondition(resumed.nextBatch().map(\.id) == Array(24..<29))
+        var repeatRun = RecommendationRun(rankedCandidates: ranked)
+        precondition(repeatRun.nextBatch().map(\.id) == Array(0..<12))
+        var emptyRun = RecommendationRun(rankedCandidates: [])
+        precondition(emptyRun.exhausted && emptyRun.nextBatch().isEmpty)
+        var single = RecommendationRun(rankedCandidates: [ranked[0]])
+        precondition(single.nextBatch().count == 1 && single.exhausted && single.nextBatch().isEmpty)
+        let legacy = ListeningSession(prompt: "fixture", tracks: ranked, createdAt: Date(), listenerID: nil)
+        var legacyJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(legacy)) as! [String: Any]
+        legacyJSON.removeValue(forKey: "rankedCandidates")
+        let oldSession = try JSONDecoder().decode(ListeningSession.self, from: JSONSerialization.data(withJSONObject: legacyJSON))
+        precondition(oldSession.rankedCandidates == nil && oldSession.tracks == ranked)
+        print("PASS recommendation 12/12/5 batches, threshold, exhaustion, explicit repeat, resume and legacy history")
         let track = NetEaseAPI.parseTracks([["id": 42, "name": "Test", "dt": 180000,
                                             "ar": [["name": "A"], ["name": "B"]], "al": ["name": "Album"]]]).first!
         precondition(track.duration == 180 && track.artist == "A / B" && !track.isDemo)
@@ -112,6 +136,36 @@ struct HostCoreChecks {
             precondition(code == 801)
             print("PASS live QR creation and waiting-for-scan status (no saved account accessed)")
         }
+        let fieldRows: [[String: Any]] = [
+            ["creativeType": "songTag", "uiElement": ["mainTitle": ["title": "曲风"]],
+             "resources": [["uiElement": ["mainTitle": ["title": "摇滚-后摇"]]],
+                           ["valid": false, "uiElement": ["mainTitle": ["title": "无效标签"]]]]],
+            ["creativeType": "instrument", "uiElement": ["mainTitle": ["title": "乐器"], "textLinks": [["text": "电吉他"], ["text": "电吉他"], ["text": "钢琴"]]]],
+            ["creativeType": "bpm", "uiElement": ["mainTitle": ["title": "BPM"], "textLinks": [["text": "63"]]]],
+            ["creativeType": "publishTime", "uiElement": ["mainTitle": ["title": "发行时间"], "textLinks": [["text": "2011-04-01"]]]],
+            ["creativeType": "sheet", "uiElement": ["mainTitle": ["title": "乐谱"], "textLinks": [["text": "上传"]]]]
+        ]
+        let metadataBody: [String: Any] = ["data": ["blocks": [
+            ["showType": "SONG_PLAY_ABOUT_TAB_SONG_BASIC", "creatives": fieldRows],
+            ["showType": "PLAYLIST_MULTI_THREE_GRID", "creatives": [["creativeType": "songTag", "uiElement": ["mainTitle": ["title": "推荐歌单"], "textLinks": [["text": "不应录入"]]]]]]
+        ]]]
+        let snapshot = NetEaseAPI.parseSongWiki(metadataBody, songID: 42, fetchedAt: Date(timeIntervalSince1970: 100))
+        precondition(snapshot.songID == 42 && snapshot.bpm == 63 && snapshot.fields.count == 4)
+        precondition(snapshot.fields[0].values == ["摇滚-后摇"] && snapshot.fields[1].values == ["电吉他", "钢琴"])
+        precondition(snapshot.fetchedAt == Date(timeIntervalSince1970: 100) && snapshot.source == "netease-song-wiki")
+        let savedSnapshot = try JSONDecoder().decode(SongWikiMetadata.self, from: JSONEncoder().encode(snapshot))
+        precondition(savedSnapshot == snapshot)
+        MockHTTP.response = metadataBody
+        let remoteSnapshot = try await api.songWiki(id: 42)
+        precondition(remoteSnapshot.fields == snapshot.fields)
+        print("PASS wiki resources/text links, deduplication, invalid/action/recommendation exclusion, snapshot persistence and API")
+        MockHTTP.response = ["code": 200, "lrc": ["lyric": "[00:01]合成中文歌词"], "tlyric": ["lyric": "[00:01]合成译词"]]
+        let lyrics = try await api.lyrics(id: 42)
+        precondition(lyrics.songID == 42 && lyrics.original.contains("合成中文") && lyrics.translation.contains("合成译词"))
+        MockHTTP.response = ["code": 200, "nolyric": true]
+        let noLyrics = try await api.lyrics(id: 42)
+        precondition(noLyrics.original.isEmpty && noLyrics.translation.isEmpty)
+        print("PASS lyrics text/translation API mapping and explicit missing text")
         print("ALL CORE CHECKS PASSED")
     }
 }

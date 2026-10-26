@@ -2,12 +2,17 @@ import Foundation
 import OSLog
 import Darwin
 
-enum LogCategory: String, Codable, CaseIterable { case app, auth, api, playback, analysis, storage }
+enum LogCategory: String, Codable, CaseIterable { case app, auth, api, playback, analysis, storage, companion }
 enum LogEvent: String, Codable {
     case started, succeeded, failed, cancelled, response, ready, paused, resumed
     case enqueued, stateChanged, accountChanged, interrupted, routeChanged, cleared, recovered
 }
 enum LogOperation: String, Codable {
+    case companionNearbySearch, companionDiscovery, companionDiscoveryVisible, companionPairingListener, companionListener, companionConnection
+    case companionRequest, companionApproval, companionVerification, companionPrompt
+    case openRouterRequest, recommendationQueue
+    case lyricsFetch, lyricsIndex, lyricsSearch
+    case genreAnalysis
     case semanticAudio, semanticDecode, semanticLoad, semanticSave
     case startup, scene, restoreSession, login, logout, demo, apiRequest, qrKey, qrCheck, profile
     case playlists, playlistTracks, songWiki, playbackURL, playback, audioSession, downloadAudio, decodeAudio
@@ -20,6 +25,7 @@ enum LogOperation: String, Codable {
         case "/logout": return .logout
         case "/user/playlist": return .playlists
         case "/v6/playlist/detail", "/v3/song/detail": return .playlistTracks
+        case "/song/lyric": return .lyricsFetch
         case "/song/play/about/block/page": return .songWiki
         case "/song/enhance/player/url/v1": return .playbackURL
         default: return .apiRequest
@@ -27,13 +33,17 @@ enum LogOperation: String, Codable {
     }
 }
 enum LogReason: String, Codable { case user, active, inactive, background, playbackBusy, resourceLimited, lowPower, scopeChanged }
-enum LogStage: String, Codable { case queued, readingMetadata, fetching, analyzing, completed, failed }
+enum LogStage: String, Codable { case queued, readingMetadata, readingLyrics, fetching, analyzing, completed, failed }
 enum LogFormat: String, Codable { case mp3, m4a, aac, wav, flac, aiff, aif, caf, unknown }
 enum LogLevel: String, Codable { case info, warning, error }
 
 enum LogScope { @TaskLocal static var trace: UUID? }
 
 enum LogFailure: String, Codable {
+    case openRouterMissingKey, openRouterKeychain, openRouterUnavailable, openRouterInvalidQuery, openRouterUnsupported
+    case openRouterRejected, openRouterRateLimited, openRouterNetwork, openRouterService, openRouterMissingBPM, openRouterIncomplete
+    case lyricsModel, lyricsVersion, lyricsVector, lyricsInference, lyricsStorage
+    case genreModel, genreVersion, genreOutput, genreInference
     case semanticModel, semanticVersion, semanticVector, semanticInference, semanticStorage
     case tooShort, silent, missingAudio, tooLarge, download, decode, invalidAudioResponse, httpStatus, authExpired, application
 }

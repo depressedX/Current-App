@@ -32,6 +32,9 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         store.$queue.combineLatest(store.$currentIndex).sink { [weak self] _, _ in
             Task { @MainActor in self?.refreshQueue() }
         }.store(in: &subscriptions)
+        store.$queueEnded.combineLatest(store.$recommendationExhausted).sink { [weak self] _, _ in
+            Task { @MainActor in self?.refreshQueue() }
+        }.store(in: &subscriptions)
         store.$sessions.combineLatest(store.$listener).sink { [weak self] _, _ in
             Task { @MainActor in self?.refreshHistory() }
         }.store(in: &subscriptions)
@@ -44,7 +47,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         subscriptions.removeAll(); controller = nil; queueTemplate = nil; historyTemplate = nil
     }
     private func refreshQueue() {
-        let items = store.queue.enumerated().map { index, song in
+        var items = store.queue.enumerated().map { index, song in
             let item = CPListItem(text: song.title, detailText: song.artist)
             item.isPlaying = store.currentIndex == index
             item.handler = { [weak self] _, completion in
@@ -54,6 +57,14 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 completion()
             }
             return item
+        }
+        if store.queueEnded && store.recommendationExhausted {
+            let more = CPListItem(text: "允许重复继续听", detailText: "本轮候选已听完，延续当前听感")
+            more.handler = { [weak self] _, completion in
+                self?.store.continueWithRepeats()
+                completion()
+            }
+            items.append(more)
         }
         queueTemplate?.updateSections([CPListSection(items: items)])
     }

@@ -100,6 +100,7 @@ private extension LogCategory {
         case .playback: return "播放"
         case .analysis: return "歌曲分析"
         case .storage: return "本机存储"
+        case .companion: return "Mac 连接与配对"
         }
     }
 }

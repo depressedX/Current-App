@@ -1,5 +1,6 @@
 # 歌曲池与分析链路
 
+> 客观特征新版见 [客观歌曲分析 v1](12-objective-song-profile.md)。DCLAP 相似度仍是实验结果，不作为确定分类。
 状态：基础链路与 DCLAP 听感链路已接入。详情见 [听感分析](11-semantic-analysis.md)。最低设计基线 iPhone 12／A14，iOS 17+。
 
 ## 动线

@@ -1,0 +1,19 @@
+{
+  "model": "BGE-small-zh-v1.5 (community INT8 ONNX)",
+  "revision": "9507db33464b5da99a532ac26b2a251767cbc62b",
+  "dimensions": 512,
+  "pooling": "CLS + L2 normalization",
+  "queryInstruction": "为这个句子生成表示以用于检索相关文章：",
+  "maxTokens": 256,
+  "chunking": "4 lyric lines, stride 2, duplicate chunk removal per language source",
+  "aggregation": "maximum chunk cosine per song; no title, artist or audio included",
+  "originalAndTranslation": "Chinese original or API Chinese translation only; no automatic translation; returned source marked",
+  "chunks": 164,
+  "indexSeconds": 0.987229291931726,
+  "onnxruntime": "1.31.0",
+  "hashes": {
+    "model_quantized.onnx": "99a6e522710c00220c89f8c52e0cc5aa09d4cbb1c34c0e932eab3a9dfdc65df3",
+    "model_quantized.onnx_data": "952623481ca8beea884e3d3c9ecaf8a3c7bf1d0c21de29e970cd31af9d37a90b",
+    "tokenizer.json": "3d09c84ebd10306706a79a8276b3ab736a40d8ec03251c7639f4e52c3a1a4f8e"
+  }
+}
