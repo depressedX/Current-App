@@ -13,7 +13,7 @@ framework=cache/'artifacts/onnxruntime-swift-package-manager/onnxruntime/onnxrun
 if not source.is_dir() or not framework.is_dir():
  raise SystemExit('先使用 Xcode 解析 project.yml 指定的 ONNX Runtime 1.24.2 依赖，再设置 CURRENT_SPM_CACHE。')
 (work/'Sources/Check').mkdir(parents=True,exist_ok=True)
-for f in ['Current/Core/Models.swift','Current/Analysis/AnalysisModels.swift','Current/Analysis/LyricsModels.swift','Current/Analysis/SemanticModels.swift','Current/Analysis/AcousticDSP.swift','Current/Analysis/GenreFrontend.swift','Current/Analysis/GenreAnalyzer.swift','Current/Diagnostics/AppLog.swift','Tests/GenreChecks.swift']:
+for f in ['Current/Core/Models.swift','Current/Core/RecommendationQuery.swift','Current/Analysis/AnalysisModels.swift','Current/Analysis/LyricsModels.swift','Current/Analysis/SemanticModels.swift','Current/Analysis/AcousticDSP.swift','Current/Analysis/GenreFrontend.swift','Current/Analysis/GenreAnalyzer.swift','Current/Diagnostics/AppLog.swift','Tests/GenreChecks.swift']:
  shutil.copy2(root/f,work/'Sources/Check'/Path(f).name)
 shutil.copytree(source,work/'Bindings',dirs_exist_ok=True)
 link=work/'onnxruntime.xcframework'

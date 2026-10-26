@@ -10,8 +10,12 @@ struct LibraryView: View {
     @FocusState private var desktopSearchFocused: Bool
     private var songs: [PoolSong] { pool.songs.filter { $0.state == .completed } }
     private var genres: [String] {
-        Array(Set(songs.flatMap { $0.genres?.matches.map(\.familyTitle) ?? [] })).sorted()
+        Array(Set(songs.flatMap { Array($0.genres?.filterFamilies ?? []) })).sorted()
     }
+    private var styles: [String] {
+        Array(Set(songs.flatMap { Array($0.genres?.filterStyles ?? []) })).sorted()
+    }
+    private var wikiGenres: [String] { Array(Set(songs.flatMap { Array($0.wikiGenreLabels) })).sorted() }
     private var instruments: [String] {
         Array(Set(songs.flatMap { $0.features?.profile?.soundLabels.map(\.label) ?? [] })).sorted()
     }
@@ -87,7 +91,7 @@ struct LibraryView: View {
                                 .padding(.horizontal, 16).frame(minHeight: 44)
                                 .foregroundStyle(filters.count == 0 ? Color.primary : CurrentTheme.accent)
                                 .background(CurrentTheme.surface, in: Capsule())
-                        }.buttonStyle(CurrentPressStyle())
+                        }.buttonStyle(CurrentPressStyle()).accessibilityIdentifier("libraryFilters")
                     }
                     if filters.count > 0 {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -97,6 +101,9 @@ struct LibraryView: View {
                                 }
                                 ForEach(filters.instruments.sorted(), id: \.self) { value in
                                     removableChip(value) { filters.instruments.remove(value) }
+                                }
+                                ForEach(filters.wikiGenres.sorted(), id: \.self) { value in
+                                    removableChip("百科：" + value) { filters.wikiGenres.remove(value) }
                                 }
                                 if filters.hasBPM {
                                     removableChip(filters.bpmTitle) { filters.minimum = ""; filters.maximum = "" }
@@ -137,7 +144,7 @@ struct LibraryView: View {
         .navigationTitle("音乐库").navigationBarTitleDisplayMode(.inline)
         .modifier(LibrarySearchCompatibility(text: $search))
         .sheet(isPresented: $showFilters) {
-            LibraryFilterSheet(initial: filters, genres: genres, instruments: instruments,
+            LibraryFilterSheet(initial: filters, genres: genres, styles: styles, wikiGenres: wikiGenres, instruments: instruments,
                                resultCount: { matching($0).count }) { filters = $0 }
         }
         .onChange(of: pool.account) { _, _ in
@@ -178,11 +185,12 @@ private struct LibrarySearchCompatibility: ViewModifier {
 
 private struct LibraryFilters {
     var genres: Set<String> = []
+    var wikiGenres: Set<String> = []
     var instruments: Set<String> = []
     var minimum = ""
     var maximum = ""
     var hasBPM: Bool { !minimum.isEmpty || !maximum.isEmpty }
-    var count: Int { genres.count + instruments.count + (hasBPM ? 1 : 0) }
+    var count: Int { genres.count + wikiGenres.count + instruments.count + (hasBPM ? 1 : 0) }
     var valid: Bool {
         let bounds = [minimum, maximum].filter { !$0.isEmpty }
         return bounds.allSatisfy { Int($0).map { (1...400).contains($0) } == true }
@@ -196,9 +204,8 @@ private struct LibraryFilters {
     // Alternatives within a category; intersect different categories.
     func matches(_ song: PoolSong) -> Bool {
         guard valid else { return false }
-        let styles = Set(song.genres?.matches.map(\.familyTitle) ?? [])
         let sounds = Set(song.features?.profile?.soundLabels.map(\.label) ?? [])
-        return (genres.isEmpty || !genres.isDisjoint(with: styles))
+        return song.matchesGenreFilters(audio: genres, encyclopedia: wikiGenres)
             && (instruments.isEmpty || !instruments.isDisjoint(with: sounds))
             && (!hasBPM || song.resolvedBPM.map {
                 $0 >= Double(Int(minimum) ?? 1) && $0 <= Double(Int(maximum) ?? 400)
@@ -210,13 +217,15 @@ private struct LibraryFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: LibraryFilters
     let genres: [String]
+    let styles: [String]
+    let wikiGenres: [String]
     let instruments: [String]
     let resultCount: (LibraryFilters) -> Int
     let apply: (LibraryFilters) -> Void
-    init(initial: LibraryFilters, genres: [String], instruments: [String],
+    init(initial: LibraryFilters, genres: [String], styles: [String], wikiGenres: [String], instruments: [String],
          resultCount: @escaping (LibraryFilters) -> Int, apply: @escaping (LibraryFilters) -> Void) {
         _draft = State(initialValue: initial)
-        self.genres = genres; self.instruments = instruments
+        self.genres = genres; self.styles = styles; self.wikiGenres = wikiGenres; self.instruments = instruments
         self.resultCount = resultCount; self.apply = apply
     }
     var body: some View {
@@ -224,7 +233,15 @@ private struct LibraryFilterSheet: View {
             Form {
                 Section {
                     choices(genres, selection: $draft.genres)
-                } header: { Text("风格") } footer: { Text("同类任选其一，不同类别同时满足。") }
+                } header: { Text("音频风格大类") }
+                Section {
+                    choices(styles, selection: $draft.genres)
+                } header: { Text("音频具体风格") } footer: { Text("House 包含证据足够的 House 子风格。") }
+                Section {
+                    choices(wikiGenres, selection: $draft.wikiGenres)
+                } header: { Text("百科曲风") } footer: {
+                    Text("保留网易云原始标签，准确性未验证。音频曲风或百科曲风任一命中即可；与乐器、节奏同时满足。")
+                }
                 Section("乐器") { choices(instruments, selection: $draft.instruments) }
                 Section {
                     HStack(spacing: 12) {
@@ -402,7 +419,7 @@ struct AboutView: View {
                 Text("Current").font(CurrentTheme.TypeScale.title)
                 Text("0.1.0 · 交互预览").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             }
-            aboutSection("选歌", "通过个人 OpenRouter Key 理解听歌需求，再按 BPM 条件和歌曲池听感排序。首批最多 12 首，剩余 3 首时自动补充；候选听完后可允许重复继续听。")
+            aboutSection("选歌", "通过个人 OpenRouter Key 理解听歌需求，再按 BPM 条件和歌曲池听感排序。一次加入全部匹配歌曲；听完后可手动再听一遍。")
             aboutSection("推荐偏好", "喜欢和不合适仅用于 Current 的推荐偏好，永不同步网易云收藏。当前只记录反馈，待接入推荐排序后生效。")
             aboutSection("演示音频", "8 首原创合成片段，用于体验播放操作。")
             aboutSection("CarPlay", "先在 iPhone 准备歌单。真机使用需要 Apple 音频授权。")

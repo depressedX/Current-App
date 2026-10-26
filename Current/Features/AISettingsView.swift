@@ -43,7 +43,7 @@ struct AISettingsView: View {
                     }.disabled(testing).accessibilityIdentifier("clearOpenRouterKey")
                 }
             } header: { Text("个人 API Key") } footer: {
-                Text("Key 只保存在本机 Keychain，不写入日志。生成时会把这次听歌需求和听感词表发送至 OpenRouter 及其模型供应商；不发送音频、网易云凭据或完整歌单。")
+                Text("Key 只保存在本机 Keychain，不写入日志。生成时会把听歌需求、听感词表，以及分别标明来源的音频曲风与百科曲风词表发送至 OpenRouter 及其模型供应商；不发送音频、网易云凭据或完整歌单。")
             }
             if let status { Section { Text(status).font(.callout).accessibilityIdentifier("openRouterConnectionStatus") } }
             Section { Link("获取 OpenRouter Key", destination: URL(string: "https://openrouter.ai/settings/keys")!) }

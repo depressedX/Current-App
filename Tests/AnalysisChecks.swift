@@ -45,6 +45,116 @@ actor AnalysisProbe {
             try file.write(from: buffer); offset += frames
         }
     }
+    @MainActor static func conjunctiveChecks(in folder: URL, audio: URL) async throws {
+        func axis(_ index: Int) -> [Float] {
+            var vector = [Float](repeating: 0, count: SemanticSpace.dimensions); vector[index] = 1; return vector
+        }
+        let catalog = ConceptCatalog(schemaVersion: 1, spaceID: SemanticSpace.id, catalogVersion: SemanticSpace.catalogVersion,
+            concepts: [ListeningConcept(id: "house", label: "House", definition: "House", vector: axis(0)),
+                       ListeningConcept(id: "melancholic", label: "阴郁", definition: "伤感", vector: axis(1)),
+                       ListeningConcept(id: "warm", label: "温暖", definition: "温暖", vector: axis(2)),
+                       ListeningConcept(id: "energetic", label: "激烈", definition: "激烈", vector: axis(4))])
+        let root = folder.appendingPathComponent("conjunctive")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let disk = SemanticDisk(directory: root.appendingPathComponent("SongAnalysis"))
+        // BPM, sad similarity, warm similarity, House evidence, House semantic similarity.
+        let fixtures: [(Double?, Float, Float, Bool, Float)] = [
+            (120, 0.35, 0.1, true, 0.1), (110, 0.30, 0.35, true, 0.1), (130, 0.4, 0.2, true, 0.1),
+            (120, 0.1, 0.1, true, 0.9), // Great House score cannot compensate for missing sadness.
+            (120, 0.8, 0.1, false, 0.1), // Strong sadness cannot compensate for wrong genre.
+            (140, 0.8, 0.1, true, 0.1), (nil, 0.8, 0.1, true, 0.1),
+            (109, 0.8, 0.1, true, 0.1), (131, 0.8, 0.1, true, 0.1)
+        ]
+        var archive = PoolCatalog()
+        for (i, fixture) in fixtures.enumerated() {
+            let track = Track(id: 30000 + i, title: "Conjunctive fixture", artist: "Fixture", album: "Fixture",
+                              artwork: nil, duration: 24, demoIndex: 0)
+            _ = archive.enqueue([track], account: "a", source: "fixture")
+            archive.songs[i].state = .completed
+            if i == 4 {
+                archive.songs[i].wikiMetadata = SongWikiMetadata(songID: track.id, fetchedAt: Date(), bpm: nil,
+                    fields: [.init(kind: "songTag", title: "曲风", values: ["电子-House"]),
+                             .init(kind: "songBizTag", title: "推荐标签", values: ["伤感"])])
+            }
+            if let bpm = fixture.0 { archive.songs[i].wikiBPM = WikiBPM(value: bpm, fetchedAt: Date()) }
+            var vector = axis(3)
+            vector[0] = fixture.4; vector[1] = fixture.1; vector[2] = fixture.2
+            vector[3] = sqrt(1 - fixture.4 * fixture.4 - fixture.1 * fixture.1 - fixture.2 * fixture.2)
+            archive.songs[i].semantic = try await disk.save(SemanticAnalysis(vector: vector, windowStarts: [0], elapsedSeconds: 0),
+                songID: archive.songs[i].id, account: "a", catalog: catalog)
+            archive.songs[i].genres = GenreAnalysis(matches: [GenreMatch(index: fixture.3 ? 91 : 125, family: "Electronic",
+                style: fixture.3 ? "House" : "Synth-pop", score: 0.7)], windows: 10, duration: 20, analyzedAt: Date())
+        }
+        let url = root.appendingPathComponent("pool.json")
+        try JSONEncoder().encode(archive).write(to: url)
+        let pool = SongPoolStore(fileURL: url, resolve: { _ in audio }, concepts: catalog)
+        try await wait { !pool.loading }; pool.activate(account: "a")
+        let required = RecommendationQuery(summary: "伤感的120 BPM左右的House", bpmMinimum: nil, bpmMaximum: nil,
+            bpmRequired: true, preferences: [.init(concept: "house", direction: .prefer, weight: 1),
+                                          .init(concept: "melancholic", direction: .prefer, weight: 0.1)], unsupported: [], bpmTarget: 120)
+        let query = try required.validated(allowedConcepts: Set(catalog.concepts.map(\.id)))
+        precondition(query.bpmMinimum == 110 && query.bpmMaximum == 130)
+        let accepted = try await pool.recommendationQueue(query: required)
+        precondition(Set(accepted.map(\.id)) == [30000, 30001, 30002])
+        precondition(RecommendationPlaylist(candidates: accepted).tracks.count == 3)
+        var warmer = required
+        warmer = RecommendationQuery(summary: "also warm", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: true,
+            preferences: required.preferences + [.init(concept: "warm", direction: .prefer, weight: 0.1)], unsupported: [], bpmTarget: 120)
+        let warmTracks = try await pool.recommendationQueue(query: warmer)
+        precondition(warmTracks.map(\.id) == [30001])
+        let optional = RecommendationQuery(summary: "House, preferably sad", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: true,
+            preferences: [.init(concept: "house", direction: .prefer, weight: 1),
+                          .init(concept: "melancholic", direction: .prefer, weight: 1, requirement: .preferred)], unsupported: [], bpmTarget: 120)
+        let optionalTracks = try await pool.recommendationQueue(query: optional)
+        precondition(Set(optionalTracks.map(\.id)) == [30000, 30001, 30002, 30003])
+        let empty = RecommendationQuery(summary: "energetic House", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: true,
+            preferences: required.preferences + [.init(concept: "energetic", direction: .prefer, weight: 1)], unsupported: [], bpmTarget: 120)
+        do { _ = try await pool.recommendationQueue(query: empty); fatalError("semantic conditions relaxed") }
+        catch is CurrentError {}
+        precondition(pool.songs.allSatisfy { $0.semanticReady }) // Rejecting a condition is not a storage failure.
+        let wikiID = GenreReference(source: .encyclopedia, value: "电子-House").id
+        precondition(pool.intentConcepts.contains { $0.id == wikiID && $0.definition.contains("网易云百科") })
+        precondition(pool.intentConcepts.contains { $0.id == "audioStyle:Electronic---House" })
+        precondition(archive.songs[4].wikiGenreLabels == ["电子-House"])
+        let union = RecommendationQuery(summary: "来源并集", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: true,
+            preferences: required.preferences + [.init(concept: wikiID, direction: .prefer, weight: 1)], unsupported: [], bpmTarget: 120)
+        let unionTracks = try await pool.recommendationQueue(query: union)
+        precondition(Set(unionTracks.map(\.id)) == [30000, 30001, 30002, 30004])
+        let wikiOnly = RecommendationQuery(summary: "只选百科", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: true,
+            preferences: [.init(concept: wikiID, direction: .prefer, weight: 1), required.preferences[1]], unsupported: [], bpmTarget: 120)
+        let wikiTracks = try await pool.recommendationQueue(query: wikiOnly)
+        precondition(wikiTracks.map(\.id) == [30004])
+        precondition(!archive.songs[4].matchesGenreFilters(audio: ["House"], encyclopedia: []))
+        precondition(archive.songs[4].matchesGenreFilters(audio: ["House"], encyclopedia: ["电子-House"]))
+        precondition(!archive.songs[0].matchesGenreFilters(audio: [], encyclopedia: ["电子-House"]))
+        precondition(archive.songs[0].matchesGenreFilters(audio: ["House"], encyclopedia: ["电子-House"]))
+        precondition(archive.songs[0].matchesGenreFilters(audio: [], encyclopedia: []))
+        let excluding = RecommendationQuery(summary: "排除并集", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: false,
+            preferences: [.init(concept: "house", direction: .avoid, weight: 1),
+                          .init(concept: wikiID, direction: .avoid, weight: 1)], unsupported: [])
+        precondition(!excluding.matchesGenres(archive.songs[4].genres, wiki: archive.songs[4].wikiGenreLabels))
+        precondition(!excluding.matchesGenres(archive.songs[0].genres, wiki: []))
+        print("PASS independent audio/wiki genre sources: OR retrieval and manual filters, encyclopedia-only evidence, negative union, full-vector mood/BPM intersection, source vocabularies and non-genre metadata isolation")
+        let boundary = RecommendationQuery.Preference(concept: "melancholic", direction: .prefer, weight: 1)
+        precondition(boundary.accepts(similarity: 0.25) && !boundary.accepts(similarity: 0.249))
+        precondition(!boundary.accepts(similarity: .nan))
+        let avoid = RecommendationQuery.Preference(concept: "melancholic", direction: .avoid, weight: 1)
+        precondition(avoid.accepts(similarity: 0.249) && !avoid.accepts(similarity: 0.25))
+        print("PASS conjunctive retrieval: House AND 110–130 BPM AND sad threshold; no cross-condition compensation, optional ranking, multiple required moods, empty results and boundary handling")
+
+        if let path = ProcessInfo.processInfo.environment["CURRENT_QUERY_POOL"],
+           let conceptPath = ProcessInfo.processInfo.environment["CURRENT_QUERY_CONCEPTS"] {
+            let device = try JSONDecoder().decode(PoolCatalog.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+            let concepts = try ConceptCatalog.load(url: URL(fileURLWithPath: conceptPath))
+            let devicePool = SongPoolStore(fileURL: URL(fileURLWithPath: path), resolve: { _ in audio }, concepts: concepts)
+            try await wait { !devicePool.loading }
+            if let account = device.songs.first?.account { devicePool.activate(account: account) }
+            do {
+                let tracks = try await devicePool.recommendationQueue(query: required)
+                print("DEVICE SNAPSHOT House AND 110–130 BPM AND sad:", tracks.count)
+            } catch is CurrentError { print("DEVICE SNAPSHOT House AND 110–130 BPM AND sad: 0 (no relaxation)") }
+        }
+    }
     static func compressedDownloadCheck(in folder: URL) async throws {
         let input = folder.appendingPathComponent("compressed-input.wav")
         let aac = folder.appendingPathComponent("compressed.m4a")
@@ -412,6 +522,105 @@ actor AnalysisProbe {
         precondition(targetTracks.last == batchTracks[28])
         print("PASS real query ranking: inclusive BPM bounds, unknown/outside exclusion and soft BPM preference")
         print("PASS recommendation ranking returns all 29 candidates for continuation; default batch remains 12")
+
+        // Reproduce the reported false positives with real classifier scores. Make their semantic
+        // scores higher than the genuine candidates so only the production genre gate can reject them.
+        let genreFolder = folder.appendingPathComponent("genre-ranking")
+        try FileManager.default.createDirectory(at: genreFolder, withIntermediateDirectories: true)
+        let genreCatalog = ConceptCatalog(schemaVersion: 1, spaceID: SemanticSpace.id,
+            catalogVersion: SemanticSpace.catalogVersion,
+            concepts: [ListeningConcept(id: "house", label: "House", definition: "House", vector: unitVector),
+                       ListeningConcept(id: "energetic", label: "激烈", definition: "推进感", vector: unitVector)])
+        let genreFixtures: [(String, [(String, Double)])] = [
+            ("我恨冬天", [("Downtempo", 0.115653), ("Deep House", 0.109366)]),
+            ("Bizarre Love Triangle", [("Synth-pop", 0.304560), ("Italo-Disco", 0.224094)]),
+            ("你少在那边", [("Synth-pop", 0.432822), ("Electro", 0.112513)]),
+            ("霓虹甜心", [("Synth-pop", 0.247138), ("House", 0.084892)]),
+            ("Lover (Gerd Janson Remix)", [("Nu-Disco", 0.275894), ("House", 0.224978), ("Deep House", 0.203647)]),
+            ("Choreography (Extended Mix)", [("Deep House", 0.331612), ("House", 0.272264)]),
+            ("A LITTLE BIT FUNKIER (Extended Mix)", [("House", 0.283693), ("Techno", 0.234468)]),
+            ("Disco dominates", [("Disco", 0.513826), ("House", 0.317281)]),
+            ("Low evidence", [("House", 0.12), ("Deep House", 0.11), ("Tech House", 0.10)]),
+            ("Missing analysis", []), ("Stale analysis", [("House", 0.8)])
+        ]
+        var genrePoolCatalog = PoolCatalog()
+        let genreDisk = SemanticDisk(directory: genreFolder.appendingPathComponent("SongAnalysis"))
+        for (index, fixture) in genreFixtures.enumerated() {
+            let track = Track(id: 20000 + index, title: fixture.0, artist: "Fixture", album: "Fixture",
+                              artwork: nil, duration: 24, demoIndex: 0)
+            _ = genrePoolCatalog.enqueue([track], account: "a", source: "fixture")
+            genrePoolCatalog.songs[index].state = .completed
+            var vector = unitVector
+            if (4...6).contains(index) { vector = unitVector.map { -$0 } }
+            genrePoolCatalog.songs[index].semantic = try await genreDisk.save(
+                SemanticAnalysis(vector: vector, windowStarts: [0], elapsedSeconds: 0),
+                songID: genrePoolCatalog.songs[index].id, account: "a", catalog: genreCatalog)
+            if !fixture.1.isEmpty {
+                var analysis = GenreAnalysis(matches: fixture.1.enumerated().map {
+                    GenreMatch(index: $0.offset, family: "Electronic", style: $0.element.0, score: $0.element.1)
+                }, windows: 10, duration: 20, analyzedAt: Date())
+                if index == 10 { analysis.version = "obsolete" }
+                genrePoolCatalog.songs[index].genres = analysis
+            }
+            genrePoolCatalog.songs[index].wikiBPM = WikiBPM(value: index == 4 ? 100 : 120, fetchedAt: Date())
+        }
+        let genrePoolURL = genreFolder.appendingPathComponent("pool.json")
+        try JSONEncoder().encode(genrePoolCatalog).write(to: genrePoolURL)
+        let genreRanking = SongPoolStore(fileURL: genrePoolURL, resolve: { _ in wav }, concepts: genreCatalog)
+        try await wait { !genreRanking.loading }
+        genreRanking.activate(account: "a")
+        let houseQuery = RecommendationQuery(summary: "House", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: false,
+            preferences: [.init(concept: "house", direction: .prefer, weight: 1)], unsupported: [])
+        let houseTracks = try await genreRanking.recommendationQueue(query: houseQuery)
+        precondition(houseTracks.map(\.id) == [20004, 20005, 20006])
+        precondition(RecommendationPlaylist(candidates: houseTracks).tracks.count == 3)
+        let moodQuery = RecommendationQuery(summary: "激烈", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: false,
+            preferences: [.init(concept: "energetic", direction: .prefer, weight: 1, requirement: .preferred)], unsupported: [])
+        let moodTracks = try await genreRanking.recommendationQueue(query: moodQuery)
+        precondition(moodTracks.count == genreFixtures.count) // Mood requests do not require genre evidence.
+        let avoidHouse = RecommendationQuery(summary: "不要House", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: false,
+            preferences: [.init(concept: "house", direction: .avoid, weight: 1)], unsupported: [])
+        let withoutHouse = try await genreRanking.recommendationQueue(query: avoidHouse)
+        precondition(Set(withoutHouse.map(\.id)).isDisjoint(with: Set(houseTracks.map(\.id))))
+        let boundedHouse = RecommendationQuery(summary: "100 BPM House", bpmMinimum: 100, bpmMaximum: 100, bpmRequired: true,
+            preferences: houseQuery.preferences, unsupported: [])
+        let oneHouse = try await genreRanking.recommendationQueue(query: boundedHouse)
+        precondition(oneHouse.map(\.id) == [20004])
+        let noHouseQuery = RecommendationQuery(summary: "50 BPM House", bpmMinimum: 50, bpmMaximum: 50, bpmRequired: true,
+            preferences: houseQuery.preferences, unsupported: [])
+        do { _ = try await genreRanking.recommendationQueue(query: noHouseQuery); fatalError("Empty genre results padded") }
+        catch is CurrentError {}
+        let serializedQuery = try JSONDecoder().decode(RecommendationQuery.self, from: JSONEncoder().encode(houseQuery))
+        precondition(serializedQuery.hasGenreConditions)
+        let rockAnalysis = GenreAnalysis(matches: [GenreMatch(index: 1, family: "Rock", style: "Indie Rock", score: 0.7)],
+                                         windows: 10, duration: 20, analyzedAt: Date())
+        precondition(RecommendationGenre.rock.hasEvidence(in: rockAnalysis))
+        precondition(rockAnalysis.filterLabels.contains("摇滚") && rockAnalysis.filterStyles.contains("独立摇滚"))
+        precondition(!RecommendationGenre.house.hasEvidence(in: rockAnalysis))
+        let invalidAnalysis = GenreAnalysis(matches: [GenreMatch(index: 91, family: "Electronic", style: "House", score: .nan)],
+                                            windows: 10, duration: 20, analyzedAt: Date())
+        precondition(!houseQuery.matchesGenres(invalidAnalysis))
+        let wrongFamily = GenreAnalysis(matches: [GenreMatch(index: 91, family: "Pop", style: "House", score: 0.9)],
+                                        windows: 10, duration: 20, analyzedAt: Date())
+        precondition(!houseQuery.matchesGenres(wrongFamily))
+        let deepHouse = GenreAnalysis(matches: [GenreMatch(index: 50, family: "Electronic", style: "Deep House", score: 0.7)],
+                                      windows: 10, duration: 20, analyzedAt: Date())
+        precondition(deepHouse.filterStyles.contains("House") && deepHouse.filterStyles.contains("Deep House"))
+        precondition(deepHouse.filterFamilies == ["电子"])
+        precondition(!genrePoolCatalog.songs[3].genres!.filterStyles.contains("House"))
+        precondition(genrePoolCatalog.songs[10].genres!.filterLabels.isEmpty)
+        print("PASS library genre labels: family and specific styles, House includes supported substyles, weak/obsolete evidence excluded")
+        if let path = ProcessInfo.processInfo.environment["CURRENT_GENRE_POOL"] {
+            let devicePool = try JSONDecoder().decode(PoolCatalog.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+            let accepted = devicePool.songs.filter { $0.semanticReady && houseQuery.matchesGenres($0.genres) }
+            print("DEVICE SNAPSHOT House candidates:", accepted.count, "/", devicePool.songs.count)
+            for song in accepted { print("DEVICE MATCH", song.track.title) }
+            for title in genreFixtures.prefix(4).map(\.0) {
+                precondition(!accepted.contains { $0.track.title.trimmingCharacters(in: .whitespacesAndNewlines) == title })
+            }
+        }
+        print("PASS genre ranking: four reported false positives rejected, three supported tracks kept despite weaker semantics; no padding, BPM intersection, avoid and mood-only behavior")
+        try await conjunctiveChecks(in: folder, audio: wav)
 
         let corruptURL = folder.appendingPathComponent("corrupt.json")
         let corruptData = Data("not an archive".utf8)

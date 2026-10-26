@@ -106,6 +106,7 @@ targets:
       - path: Current/Analysis
         excludes: [SongPoolStore.swift]
       - path: Current/Core/Models.swift
+      - path: Current/Core/RecommendationQuery.swift
       - path: Current/Core/NetEaseAPI.swift
       - path: Current/Core/NetEaseCrypto.swift
       - path: Current/Core/KeychainStore.swift

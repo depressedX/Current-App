@@ -40,26 +40,16 @@ struct HostCoreChecks {
             Track(id: index, title: "Fixture", artist: "Fixture", album: "Fixture",
                   artwork: nil, duration: 24, demoIndex: 0)
         }
-        var run = RecommendationRun(rankedCandidates: ranked + ranked)
-        precondition(run.nextBatch().map(\.id) == Array(0..<12))
-        precondition(!run.shouldRefill(remaining: 4) && run.shouldRefill(remaining: 3))
-        precondition(run.nextBatch().map(\.id) == Array(12..<24))
-        precondition(run.nextBatch().map(\.id) == Array(24..<29))
-        precondition(run.exhausted && !run.shouldRefill(remaining: 0) && run.nextBatch().isEmpty)
-        var resumed = RecommendationRun(rankedCandidates: ranked, issued: Set(0..<24))
-        precondition(resumed.nextBatch().map(\.id) == Array(24..<29))
-        var repeatRun = RecommendationRun(rankedCandidates: ranked)
-        precondition(repeatRun.nextBatch().map(\.id) == Array(0..<12))
-        var emptyRun = RecommendationRun(rankedCandidates: [])
-        precondition(emptyRun.exhausted && emptyRun.nextBatch().isEmpty)
-        var single = RecommendationRun(rankedCandidates: [ranked[0]])
-        precondition(single.nextBatch().count == 1 && single.exhausted && single.nextBatch().isEmpty)
+        let playlist = RecommendationPlaylist(candidates: ranked + ranked)
+        precondition(playlist.tracks == ranked && playlist.tracks.count == 29)
+        precondition(RecommendationPlaylist(candidates: []).tracks.isEmpty)
+        precondition(RecommendationPlaylist(candidates: [ranked[0]]).tracks == [ranked[0]])
         let legacy = ListeningSession(prompt: "fixture", tracks: ranked, createdAt: Date(), listenerID: nil)
         var legacyJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(legacy)) as! [String: Any]
         legacyJSON.removeValue(forKey: "rankedCandidates")
         let oldSession = try JSONDecoder().decode(ListeningSession.self, from: JSONSerialization.data(withJSONObject: legacyJSON))
         precondition(oldSession.rankedCandidates == nil && oldSession.tracks == ranked)
-        print("PASS recommendation 12/12/5 batches, threshold, exhaustion, explicit repeat, resume and legacy history")
+        print("PASS full recommendation playlist, stable ordering, deduplication, empty/single results and legacy history")
         let track = NetEaseAPI.parseTracks([["id": 42, "name": "Test", "dt": 180000,
                                             "ar": [["name": "A"], ["name": "B"]], "al": ["name": "Album"]]]).first!
         precondition(track.duration == 180 && track.artist == "A / B" && !track.isDemo)

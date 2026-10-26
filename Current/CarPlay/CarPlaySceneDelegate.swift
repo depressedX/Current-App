@@ -32,7 +32,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         store.$queue.combineLatest(store.$currentIndex).sink { [weak self] _, _ in
             Task { @MainActor in self?.refreshQueue() }
         }.store(in: &subscriptions)
-        store.$queueEnded.combineLatest(store.$recommendationExhausted).sink { [weak self] _, _ in
+        store.$queueEnded.combineLatest(store.$canRepeatRecommendation).sink { [weak self] _, _ in
             Task { @MainActor in self?.refreshQueue() }
         }.store(in: &subscriptions)
         store.$sessions.combineLatest(store.$listener).sink { [weak self] _, _ in
@@ -58,8 +58,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             }
             return item
         }
-        if store.queueEnded && store.recommendationExhausted {
-            let more = CPListItem(text: "允许重复继续听", detailText: "本轮候选已听完，延续当前听感")
+        if store.queueEnded && store.canRepeatRecommendation {
+            let more = CPListItem(text: "再听一遍", detailText: "本轮候选已听完，延续当前听感")
             more.handler = { [weak self] _, completion in
                 self?.store.continueWithRepeats()
                 completion()

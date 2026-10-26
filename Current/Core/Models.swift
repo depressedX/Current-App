@@ -68,31 +68,20 @@ struct ListeningSession: Identifiable, Codable {
     let tracks: [Track]
     let createdAt: Date
     let listenerID: Int?
-    // Full ordering from the original intent; absent in older, finite sessions.
+    // Legacy batched sessions keep their full ordering here; new sessions store all tracks directly.
     var rankedCandidates: [Track]? = nil
     var issuedCandidateIDs: Set<Int>? = nil
+    // Safe local history snapshot for explaining the filters used by this session; no credentials.
+    var recommendationQuery: RecommendationQuery? = nil
+    var allowsRepeat: Bool? = nil
 }
 
-/// One intent and one pass through its ranking. Repeats require an explicit new pass.
-struct RecommendationRun {
-    static let batchSize = 12
-    static let refillThreshold = 3
-    let rankedCandidates: [Track]
-    private(set) var issued: Set<Int>
-
-    init(rankedCandidates: [Track], issued: Set<Int> = []) {
+/// The complete matching playlist, with a stable order and no duplicate tracks.
+struct RecommendationPlaylist {
+    let tracks: [Track]
+    init(candidates: [Track]) {
         var seen = Set<Int>()
-        self.rankedCandidates = rankedCandidates.filter { seen.insert($0.id).inserted }
-        self.issued = issued
-    }
-    var exhausted: Bool { rankedCandidates.allSatisfy { issued.contains($0.id) } }
-    func shouldRefill(remaining: Int) -> Bool {
-        remaining <= Self.refillThreshold && !exhausted
-    }
-    mutating func nextBatch() -> [Track] {
-        let batch = Array(rankedCandidates.filter { !issued.contains($0.id) }.prefix(Self.batchSize))
-        issued.formUnion(batch.map(\.id))
-        return batch
+        tracks = candidates.filter { seen.insert($0.id).inserted }
     }
 }
 
@@ -125,6 +114,11 @@ struct SongWikiMetadata: Codable, Equatable {
     let fields: [SongWikiField]
     var source: String { "netease-song-wiki" }
     var version = "netease-song-wiki-v1"
+    var genreLabels: Set<String> {
+        guard version == "netease-song-wiki-v1" else { return [] }
+        return Set(fields.filter { $0.kind == "songTag" && $0.title == "曲风" }
+            .flatMap(\.values).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+    }
 }
 struct SongWikiField: Codable, Equatable {
     let kind: String

@@ -26,7 +26,7 @@ Current scheme 允许在 Apple Silicon Mac 上选择 **My Mac (Designed for iPho
 
 - 「我的 → 歌曲池」：整单／单曲加入，串行基础分析、暂停继续、失败重试与结果详情。
 
-**已接入 OpenRouter 文本理解、BPM 筛选和听感概念排序。** 在「我的 → AI 设置」填写个人 Key，默认模型 `openrouter/free`，Key 仅存本机 Keychain。听感使用现有概念词表，反馈暂不参与排序。首批最多 12 首，剩余 3 首时补歌，候选听完后需手动允许重复。
+**已接入 OpenRouter 文本理解与多条件检索。** 在「我的 → AI 设置」填写个人 Key，默认模型 `openrouter/free`，Key 仅存本机 Keychain。曲风、BPM 和听感要求取交集，再排序；“120 BPM 左右”默认 110–130，“最好／优先”的项仅影响排序。歌单显示实际条件，一次加入全部匹配歌曲，不用不匹配的歌曲凑数；听完后可手动再听一遍。反馈暂不参与排序。
 
 ## 歌曲分析
 

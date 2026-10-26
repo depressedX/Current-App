@@ -43,7 +43,6 @@ enum CurrentTheme {
         static let readableWidth: CGFloat = 640
         static let artwork: CGFloat = 48
         static let control: CGFloat = 44
-        static let miniClearance: CGFloat = 84
     }
     enum Motion {
         static let press = Animation.easeOut(duration: 0.15)
@@ -61,14 +60,12 @@ enum CurrentTheme {
 }
 
 struct CurrentPage<Content: View>: View {
-    @EnvironmentObject private var store: AppStore
     @ViewBuilder let content: () -> Content
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: CurrentTheme.Space.page, content: content)
                 .frame(maxWidth: CurrentTheme.Layout.readableWidth, alignment: .leading)
                 .padding(CurrentTheme.Space.page)
-                .padding(.bottom, store.currentTrack == nil ? 0 : CurrentTheme.Layout.miniClearance)
                 .frame(maxWidth: .infinity, alignment: .top)
         }
         .scrollDismissesKeyboard(.interactively)

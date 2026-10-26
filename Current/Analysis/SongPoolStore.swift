@@ -125,24 +125,56 @@ final class SongPoolStore: ObservableObject {
         return (limit.map { Array(tracks.prefix(max(0, $0))) } ?? tracks, anchor.label)
     }
     var intentConcepts: [IntentConcept] {
-        concepts?.concepts.map { IntentConcept(id: $0.id, label: $0.label, definition: $0.definition) } ?? []
+        let listening = concepts?.concepts.map { IntentConcept(id: $0.id, label: $0.label, definition: $0.definition) } ?? []
+        var references: [String: IntentConcept] = [:]
+        for song in songs where song.state == .completed {
+            for match in song.genres?.supportedMatches ?? [] {
+                for reference in [GenreReference(source: .audioFamily, value: match.family),
+                                  GenreReference(source: .audioStyle, value: "\(match.family)---\(match.style)")] {
+                    references[reference.id] = reference.concept
+                }
+            }
+            for label in song.wikiGenreLabels {
+                let reference = GenreReference(source: .encyclopedia, value: label)
+                references[reference.id] = reference.concept
+            }
+        }
+        return listening + references.values.sorted { $0.id < $1.id }
     }
     func recommendationQueue(query: RecommendationQuery) async throws -> [Track] {
         guard let concepts else { throw SemanticError.missingResource }
-        let query = try query.validated(allowedConcepts: Set(concepts.concepts.map(\.id)))
-        let terms = query.preferences.compactMap { preference -> (ListeningConcept, Double)? in
+        let query = try query.validated(allowedConcepts: Set(intentConcepts.map(\.id)))
+        let terms = query.preferences.compactMap { preference -> (ListeningConcept, RecommendationQuery.Preference)? in
             guard let concept = concepts.concepts.first(where: { $0.id == preference.concept }) else { return nil }
-            return (concept, preference.weight * (preference.direction == .prefer ? 1 : -1))
+            return (concept, preference)
         }
-        let candidates = songs.filter { $0.semanticReady && (!query.bpmRequired || query.matchesBPM($0.resolvedBPM)) }
-        guard !candidates.isEmpty else { throw CurrentError.message("没有满足条件且已完成听感分析的歌曲。可调整条件或补充歌曲池；未知 BPM 不计为满足范围。") }
-        return try await rank(candidates, scope: account) { vector, song in
-            let semantic = try terms.reduce(0.0) { score, term in score + term.1 * (try EmbeddingMath.cosine(term.0.vector, vector)) }
-            return semantic + query.bpmPreference(song.resolvedBPM)
+        let candidates = songs.filter {
+            $0.semanticReady && query.matchesGenres($0.genres, wiki: $0.wikiGenreLabels) && (!query.bpmRequired || query.matchesBPM($0.resolvedBPM))
         }
+        guard !candidates.isEmpty else {
+            throw CurrentError.message(query.hasGenreConditions
+                ? "歌曲池中没有满足曲风及其他条件的歌曲。可补充歌曲或完成曲风分析；本次未生成歌单。"
+                : "没有满足条件且已完成听感分析的歌曲。可调整条件或补充歌曲池；未知 BPM 不计为满足范围。")
+        }
+        let tracks = try await rank(candidates, scope: account) { vector, song in
+            var score = query.bpmPreference(song.resolvedBPM)
+            for (concept, term) in terms {
+                let similarity = try EmbeddingMath.cosine(concept.vector, vector)
+                if !term.isGenre && !term.accepts(similarity: similarity) { return nil }
+                score += term.weight * (term.direction == .prefer ? 1 : -1) * similarity
+            }
+            for term in query.preferences where term.genreReference != nil {
+                if term.matchesGenre(song.genres, wiki: song.wikiGenreLabels) {
+                    score += (term.direction == .prefer ? 1 : -1) * term.weight * 0.25
+                }
+            }
+            return score
+        }
+        guard !tracks.isEmpty else { throw CurrentError.message("没有同时满足曲风、BPM 和听感条件的歌曲。可调整条件或补充歌曲池；本次未生成歌单。") }
+        return tracks
     }
     private func rank(_ candidates: [PoolSong], scope: String,
-                      score: ([Float], PoolSong) throws -> Double) async throws -> [Track] {
+                      score: ([Float], PoolSong) throws -> Double?) async throws -> [Track] {
         var ranked: [(Track, Double)] = []
         for song in candidates {
             try Task.checkCancellation()
@@ -150,7 +182,7 @@ final class SongPoolStore: ObservableObject {
             guard let semantic = song.semantic else { continue }
             do {
                 let vector = try await semanticDisk.load(semantic, songID: song.id, account: scope)
-                ranked.append((song.track, try score(vector, song)))
+                if let value = try score(vector, song) { ranked.append((song.track, value)) }
             } catch {
                 guard scope == account else { throw CancellationError() }
                 AppLog.shared.record(.storage, .failed, level: .error, operation: .semanticLoad, job: song.id, error: error)

@@ -112,6 +112,7 @@
 		3E4B12F33AAF320EC170C85D /* LyricsAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CD5158F5374BFF9B66489A /* LyricsAnalyzer.swift */; };
 		40568ADCE2623E488DBC9034 /* NativeSongAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA1CD3EEEF908CC10CE6679 /* NativeSongAnalyzer.swift */; };
 		4393BD25D2671C78A8210E3A /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B112DE9A9A4C5BAC0A0411 /* Models.swift */; };
+		2A5301934111470DB2AA598C /* RecommendationQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF70D8D31F524866D1DDC0C /* RecommendationQuery.swift */; };
 		4E896250B41DB034925499F2 /* CompanionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F936474DA9B620468CA3B9 /* CompanionProtocol.swift */; };
 		5199BDC5D558032E5C6D3DB8 /* CompanionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE459E0696E24F8F5393BC29 /* CompanionClient.swift */; };
 		567844C2A0CD8720665DE6D7 /* AnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83AB243EC984081B2FBCAE5 /* AnalysisModels.swift */; };
@@ -773,6 +774,7 @@
 				3E4B12F33AAF320EC170C85D /* LyricsAnalyzer.swift in Sources */,
 				232721AFEB1C1A4457903EAD /* LyricsModels.swift in Sources */,
 				4393BD25D2671C78A8210E3A /* Models.swift in Sources */,
+				2A5301934111470DB2AA598C /* RecommendationQuery.swift in Sources */,
 				40568ADCE2623E488DBC9034 /* NativeSongAnalyzer.swift in Sources */,
 				04304C5375A2EDBEE86F421A /* NetEaseAPI.swift in Sources */,
 				5A2686D82B6C1DE2E9E1F476 /* NetEaseCrypto.swift in Sources */,

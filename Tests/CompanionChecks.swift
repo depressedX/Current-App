@@ -89,7 +89,7 @@ final class CompanionProfileHTTP: URLProtocol {
         try await pool.importCompanion(result(ids[0]))
         precondition(pool.songs[0].state == .completed && pool.companionReady(pool.songs[0]))
         let query = RecommendationQuery(summary: "fixture", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: false,
-            preferences: [.init(concept: concepts.concepts[0].id, direction: .prefer, weight: 1)], unsupported: [])
+            preferences: [.init(concept: concepts.concepts[0].id, direction: .prefer, weight: 1, requirement: .preferred)], unsupported: [])
         let ranked = try await pool.recommendationQueue(query: query)
         precondition(ranked.map(\.id) == [42])
         print("PASS remote vector import feeds production recommendation ranking")

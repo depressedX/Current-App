@@ -1,6 +1,78 @@
 import XCTest
 
 final class CurrentUITests: XCTestCase {
+    @MainActor func testLibraryFiltersExposeHouseAndSubstyles() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-library-genres"]
+        app.launch()
+        app.tabBars.buttons["音乐库"].tap()
+        XCTAssertTrue(app.staticTexts["2 首歌曲"].waitForExistence(timeout: 10))
+        app.buttons["libraryFilters"].tap()
+        XCTAssertTrue(app.staticTexts["音频风格大类"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["音频具体风格"].exists)
+        XCTAssertTrue(app.staticTexts["百科曲风"].exists)
+        XCTAssertTrue(app.buttons["House"].exists)
+        XCTAssertTrue(app.buttons["Deep House"].exists)
+        app.buttons["House"].tap()
+        XCTAssertTrue(app.buttons["查看 1 首"].waitForExistence(timeout: 5))
+        app.buttons["查看 1 首"].tap()
+        XCTAssertTrue(app.staticTexts["House 筛选样本"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["非 House 样本"].exists)
+        app.buttons["移除筛选：House"].tap()
+        XCTAssertTrue(app.staticTexts["2 首歌曲"].waitForExistence(timeout: 5))
+        app.buttons["libraryFilters"].tap()
+        app.buttons["电子-House"].tap()
+        XCTAssertTrue(app.buttons["查看 1 首"].waitForExistence(timeout: 5))
+        app.buttons["查看 1 首"].tap()
+        XCTAssertTrue(app.staticTexts["非 House 样本"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["House 筛选样本"].exists)
+        app.buttons["libraryFilters"].tap()
+        app.buttons["House"].tap()
+        XCTAssertTrue(app.buttons["查看 2 首"].waitForExistence(timeout: 5))
+        app.buttons["查看 2 首"].tap()
+        XCTAssertTrue(app.staticTexts["2 首歌曲"].waitForExistence(timeout: 5))
+        app.buttons["移除筛选：百科：电子-House"].tap()
+        XCTAssertTrue(app.staticTexts["1 首歌曲"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor func testHomeComposerKeepsMiniPlayerOutOfKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-ui-testing-mini-player"]
+        app.launch()
+        XCTAssertTrue(app.buttons["miniPlayer"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["试试这些"].exists)
+        XCTAssertFalse(app.buttons["configureOpenRouter"].exists)
+        XCTAssertFalse(app.staticTexts["OpenRouter · 按需求匹配歌曲池"].exists)
+        let input = app.textFields["promptInput"].exists ? app.textFields["promptInput"] : app.textViews["promptInput"]
+        input.tap(); input.typeText("house")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["generateQueue"].isHittable)
+        let hidden = NSPredicate(format: "exists == false")
+        expectation(for: hidden, evaluatedWith: app.buttons["miniPlayer"])
+        waitForExpectations(timeout: 5)
+        // A native Done key may exist inside the keyboard; no separate Done toolbar remains.
+        XCTAssertFalse(app.toolbars.buttons["完成"].exists)
+        // AX updates before the system keyboard/accessory presentation finishes rendering.
+        Thread.sleep(forTimeInterval: 1)
+        let editing = XCTAttachment(screenshot: app.screenshot())
+        editing.name = "home-editing-no-floating-player"; editing.lifetime = .keepAlways; add(editing)
+
+        app.staticTexts["此刻想听什么？"].tap()
+        expectation(for: hidden, evaluatedWith: app.keyboards.firstMatch)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(app.buttons["miniPlayer"].waitForExistence(timeout: 5))
+        XCTAssertTrue((input.value as? String)?.contains("house") == true)
+        Thread.sleep(forTimeInterval: 1)
+        let restored = XCTAttachment(screenshot: app.screenshot())
+        restored.name = "home-idle-native-mini-player"; restored.lifetime = .keepAlways; add(restored)
+        app.tabBars.buttons["音乐库"].tap()
+        XCTAssertTrue(app.buttons["miniPlayer"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["此刻"].tap()
+        XCTAssertTrue((input.value as? String)?.contains("house") == true)
+        app.buttons["miniPlayer"].tap()
+        XCTAssertTrue(app.staticTexts["正在播放"].waitForExistence(timeout: 5))
+    }
+
     @MainActor func testDemoPoolRequiresPersonalOpenRouterKey() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]

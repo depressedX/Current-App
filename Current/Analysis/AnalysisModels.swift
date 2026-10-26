@@ -180,6 +180,81 @@ struct GenreAnalysis: Codable, Equatable {
         return Self(matches: matches, windows: windows, duration: duration, analyzedAt: Date())
     }
 }
+
+extension RecommendationGenre {
+    /// Conservative retrieval policy, not calibrated probabilities. Do not sum correlated labels.
+    /// Require both absolute support and proximity to the strongest competing style.
+    func hasEvidence(in analysis: GenreAnalysis?) -> Bool {
+        guard let analysis, analysis.compatible,
+              !analysis.matches.isEmpty,
+              analysis.matches.allSatisfy({ $0.score.isFinite && (0...1).contains($0.score) }),
+              let strongest = analysis.matches.map(\.score).max() else { return false }
+        let support = analysis.matches.filter { match in
+            switch self {
+            case .house:
+                return match.family == "Electronic" && Self.houseStyles.contains(match.style)
+            case .rock:
+                return match.family == "Rock"
+            }
+        }.map(\.score).max() ?? 0
+        return support >= 0.2 && support >= strongest * 0.75
+    }
+
+    private static let houseStyles: Set<String> = [
+        "Acid House", "Deep House", "Electro House", "Euro House", "Garage House", "Ghetto House",
+        "Hard House", "Hip-House", "House", "Italo House", "Progressive House", "Tech House",
+        "Tribal House", "Tropical House"
+    ]
+}
+
+extension GenreAnalysis {
+    var supportedMatches: [GenreMatch] {
+        guard compatible, matches.allSatisfy({ $0.score.isFinite && (0...1).contains($0.score) }),
+              let strongest = matches.map(\.score).max() else { return [] }
+        return matches.filter { $0.score >= 0.2 && $0.score >= strongest * 0.75 }
+    }
+    var filterFamilies: Set<String> { Set(supportedMatches.map(\.familyTitle)) }
+    var filterStyles: Set<String> {
+        var values = Set(supportedMatches.map(\.title))
+        if RecommendationGenre.house.hasEvidence(in: self) { values.insert("House") }
+        return values
+    }
+    var filterLabels: Set<String> { filterFamilies.union(filterStyles) }
+}
+
+extension RecommendationQuery {
+    func matchesGenres(_ analysis: GenreAnalysis?, wiki: Set<String> = []) -> Bool {
+        let required = preferences.filter { $0.isGenre && $0.requirement == .required }
+        let positive = required.filter { $0.direction == .prefer }
+        let negative = required.filter { $0.direction == .avoid }
+        return (positive.isEmpty || positive.contains { $0.matchesGenre(analysis, wiki: wiki) })
+            && !negative.contains { $0.matchesGenre(analysis, wiki: wiki) }
+    }
+}
+
+extension RecommendationQuery.Preference {
+    func matchesGenre(_ analysis: GenreAnalysis?, wiki: Set<String>) -> Bool {
+        if let genre { return genre.hasEvidence(in: analysis) }
+        guard let reference = genreReference else { return false }
+        switch reference.source {
+        case .encyclopedia: return wiki.contains(reference.value)
+        case .audioFamily: return analysis?.supportedMatches.contains { $0.family == reference.value } == true
+        case .audioStyle: return analysis?.supportedMatches.contains { "\($0.family)---\($0.style)" == reference.value } == true
+        }
+    }
+}
+
+extension PoolSong {
+    var wikiGenreLabels: Set<String> {
+        guard let wikiMetadata, wikiMetadata.songID == track.id else { return [] }
+        return wikiMetadata.genreLabels
+    }
+    func matchesGenreFilters(audio: Set<String>, encyclopedia: Set<String>) -> Bool {
+        (audio.isEmpty && encyclopedia.isEmpty)
+            || (!audio.isEmpty && !audio.isDisjoint(with: genres?.filterLabels ?? []))
+            || (!encyclopedia.isEmpty && !encyclopedia.isDisjoint(with: wikiGenreLabels))
+    }
+}
 enum GenreError: LocalizedError, SafeLogError {
     case missingModel, incompatible, invalidOutput, tooShort, inference
     var errorDescription: String? {

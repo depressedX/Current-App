@@ -25,7 +25,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var feedback: [Feedback] = []
     @Published private(set) var generating = false
     @Published private(set) var openRouterConfigured = OpenRouterKeyStore.hasKey
-    @Published private(set) var recommendationExhausted = false
+    @Published private(set) var canRepeatRecommendation = false
     @Published private(set) var queueEnded = false
     @Published private(set) var libraryLoading = false
     @Published var message: String?
@@ -35,7 +35,6 @@ final class AppStore: ObservableObject {
     private var generationTask: Task<Void, Never>?
     private var generationID = UUID()
     private var playbackTask: Task<Void, Never>?
-    private var recommendationRun: RecommendationRun?
     private var activeSessionID: UUID?
     private var loadingPlaylists = false
     private var cancellables = Set<AnyCancellable>()
@@ -45,6 +44,11 @@ final class AppStore: ObservableObject {
     var scope: Int? { listener?.id }
     var visibleSessions: [ListeningSession] { sessions.filter { $0.listenerID == scope }.sorted { $0.createdAt > $1.createdAt } }
     var visibleFeedback: [Feedback] { feedback.filter { $0.listenerID == scope }.reversed() }
+    var activeRecommendationSummary: String? {
+        guard let id = activeSessionID,
+              let query = sessions.first(where: { $0.id == id && $0.listenerID == scope })?.recommendationQuery else { return nil }
+        return query.displaySummary(concepts: pool.intentConcepts)
+    }
     init(archiveURL: URL? = nil) {
         let testing = archiveURL != nil || ProcessInfo.processInfo.arguments.contains("-ui-testing")
         api = NetEaseAPI(ephemeral: testing)
@@ -52,6 +56,22 @@ final class AppStore: ObservableObject {
         let folder = archiveURL?.deletingLastPathComponent() ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Current")
         let testPool = folder.appendingPathComponent("UITestSongPool")
         if testing { try? FileManager.default.removeItem(at: testPool) }
+        if testing && ProcessInfo.processInfo.arguments.contains("-ui-testing-library-genres") {
+            var fixture = PoolCatalog()
+            let tracks = [Track(id: -9101, title: "House 筛选样本", artist: "测试", album: "测试", artwork: nil, duration: 24, demoIndex: 0),
+                          Track(id: -9102, title: "非 House 样本", artist: "测试", album: "测试", artwork: nil, duration: 24, demoIndex: 1)]
+            _ = fixture.enqueue(tracks, account: "demo", source: "UI test")
+            for index in fixture.songs.indices {
+                fixture.songs[index].state = .completed
+                fixture.songs[index].genres = GenreAnalysis(matches: [GenreMatch(index: index == 0 ? 50 : 125,
+                    family: "Electronic", style: index == 0 ? "Deep House" : "Synth-pop", score: 0.7)],
+                    windows: 10, duration: 20, analyzedAt: Date())
+                fixture.songs[index].wikiMetadata = SongWikiMetadata(songID: tracks[index].id, fetchedAt: Date(), bpm: nil,
+                    fields: [.init(kind: "songTag", title: "曲风", values: [index == 0 ? "流行-合成器流行" : "电子-House"])])
+            }
+            try? FileManager.default.createDirectory(at: testPool, withIntermediateDirectories: true)
+            try? JSONEncoder().encode(fixture).write(to: testPool.appendingPathComponent("song-pool.json"))
+        }
         pool = SongPoolStore(fileURL: testing ? testPool.appendingPathComponent("song-pool.json") : nil, resolve: { track in
             if let index = track.demoIndex {
                 guard let url = Bundle.main.url(forResource: "demo-\(index)", withExtension: "wav") else { throw AnalysisError.noAudio }
@@ -76,6 +96,11 @@ final class AppStore: ObservableObject {
             guard let self, let song = self.currentTrack else { return }
             self.record(.fits, track: song)
         }
+        if testing && ProcessInfo.processInfo.arguments.contains("-ui-testing-mini-player") {
+            // Visual interaction fixture only: no audio playback, API calls or production history.
+            demoMode = true; queue = Array(DemoCatalog.tracks.prefix(2)); activePrompt = "输入交互验收"
+        }
+        if testing && ProcessInfo.processInfo.arguments.contains("-ui-testing-library-genres") { demoMode = true }
     }
     func restoreSession() async {
         guard !restored else { return }; restored = true
@@ -164,17 +189,17 @@ final class AppStore: ObservableObject {
                 AppLog.shared.record(.analysis, .succeeded, operation: .recommendationQueue, span: requestID, count: tracks.count)
                 try Task.checkCancellation()
                 guard ticket == accountEpoch, requestID == generationID else { return }
-                var run = RecommendationRun(rankedCandidates: tracks)
-                let result = run.nextBatch()
+                let result = RecommendationPlaylist(candidates: tracks).tracks
                 guard !result.isEmpty else { throw CurrentError.message("歌曲池中还没有可推荐的听感结果。") }
                 activePrompt = text; queue = result; currentIndex = 0
-                recommendationRun = run; recommendationExhausted = run.exhausted
+                canRepeatRecommendation = true
                 let session = ListeningSession(prompt: text, tracks: result, createdAt: Date(), listenerID: scope,
-                                               rankedCandidates: run.rankedCandidates, issuedCandidateIDs: run.issued)
+                                               recommendationQuery: intent, allowsRepeat: true)
                 activeSessionID = session.id
                 sessions.insert(session, at: 0)
                 sessions = Array(sessions.prefix(30)); persist()
-                message = "\(intent.displaySummary(concepts: pool.intentConcepts)) · 首批 \(result.count) 首，后续自动补充。"
+                let countMessage = "匹配 \(result.count) 首，已全部加入。"
+                message = "\(intent.displaySummary(concepts: pool.intentConcepts)) · \(countMessage)"
                 play(at: 0)
             } catch is CancellationError {} catch {
                 if ranking { AppLog.shared.record(.analysis, .failed, level: .error, operation: .recommendationQueue, span: requestID, error: error) }
@@ -210,18 +235,22 @@ final class AppStore: ObservableObject {
         guard demoMode || listener != nil else { return }
         cancelGeneration()
         clearRecommendation()
-        if let ranked = session.rankedCandidates {
-            let run = RecommendationRun(rankedCandidates: ranked, issued: session.issuedCandidateIDs ?? Set(session.tracks.map(\.id)))
-            recommendationRun = run; recommendationExhausted = run.exhausted
-            activeSessionID = session.id
+        let tracks = RecommendationPlaylist(candidates: session.rankedCandidates ?? session.tracks).tracks
+        activeSessionID = session.id
+        canRepeatRecommendation = session.allowsRepeat == true || session.recommendationQuery != nil || session.rankedCandidates != nil
+        activePrompt = session.prompt; queue = tracks
+        if let index = sessions.firstIndex(where: { $0.id == session.id && $0.listenerID == scope }),
+           sessions[index].rankedCandidates != nil {
+            var full = ListeningSession(prompt: session.prompt, tracks: tracks, createdAt: session.createdAt,
+                                        listenerID: session.listenerID, recommendationQuery: session.recommendationQuery, allowsRepeat: true)
+            full.id = session.id; sessions[index] = full; persist()
         }
-        activePrompt = session.prompt; queue = session.tracks; play(at: 0)
+        play(at: 0)
     }
     func play(at index: Int) {
         guard queue.indices.contains(index) else { return }
         currentIndex = index
         queueEnded = false
-        refillRecommendationIfNeeded()
         let song = queue[index]
         playbackTask?.cancel()
         let next = queue.indices.contains(index + 1) ? queue[index + 1] : nil
@@ -229,45 +258,19 @@ final class AppStore: ObservableObject {
     }
     func next() {
         guard !queue.isEmpty else { return }
-        refillRecommendationIfNeeded()
         if currentIndex + 1 < queue.count { play(at: currentIndex + 1) }
         else {
             player.pause(); queueEnded = true
-            message = recommendationRun == nil ? "这一轮听完了，再写一句话，开启下一段。" : "本轮候选已听完，可允许重复继续听，或写下新的需求。"
+            message = !canRepeatRecommendation ? "这一轮听完了，再写一句话，开启下一段。" : "本歌单已听完，可再听一遍，或写下新的需求。"
         }
     }
     func continueWithRepeats() {
-        guard queueEnded, recommendationExhausted, let previous = recommendationRun else { return }
-        var run = RecommendationRun(rankedCandidates: previous.rankedCandidates)
-        let batch = run.nextBatch()
-        guard !batch.isEmpty else { return }
-        recommendationRun = run; recommendationExhausted = run.exhausted
-        let resumeIndex = currentIndex + 1
-        appendRecommendation(batch)
-        play(at: resumeIndex)
-    }
-    private func refillRecommendationIfNeeded() {
-        guard var run = recommendationRun,
-              run.shouldRefill(remaining: queue.count - currentIndex - 1) else { return }
-        let batch = run.nextBatch()
-        recommendationRun = run; recommendationExhausted = run.exhausted
-        appendRecommendation(batch)
-    }
-    private func appendRecommendation(_ batch: [Track]) {
-        guard !batch.isEmpty else { return }
-        queue.append(contentsOf: batch)
-        if let index = sessions.firstIndex(where: { $0.id == activeSessionID && $0.listenerID == scope }) {
-            // ListeningSession keeps an immutable snapshot, including batches already issued.
-            let old = sessions[index]
-            var updated = ListeningSession(prompt: old.prompt, tracks: old.tracks + batch,
-                                           createdAt: old.createdAt, listenerID: old.listenerID,
-                                           rankedCandidates: old.rankedCandidates, issuedCandidateIDs: recommendationRun?.issued)
-            updated.id = old.id; sessions[index] = updated; persist()
-        }
+        guard queueEnded, canRepeatRecommendation, !queue.isEmpty else { return }
+        play(at: 0)
     }
     private func clearRecommendation() {
-        recommendationRun = nil; activeSessionID = nil
-        recommendationExhausted = false; queueEnded = false
+        activeSessionID = nil
+        canRepeatRecommendation = false; queueEnded = false
     }
     func previous() {
         if queueEnded { play(at: currentIndex) }
@@ -342,6 +345,8 @@ extension OpenRouterFailure: SafeLogError {
         case .network: return .openRouterNetwork
         case .service: return .openRouterService
         case .missingBPM: return .openRouterMissingBPM
+        case .missingGenre: return .openRouterMissingGenre
+        case .missingConcept: return .openRouterMissingConcept
         case .incomplete: return .openRouterIncomplete
         }
     }

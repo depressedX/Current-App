@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$ROOT/Tools/PCPrecompute/.cache/native-check"
 mkdir -p "$WORK/Sources/Check"
 # Copy only tested production sources, so the check cannot drift into a second implementation.
-for FILE in Current/Core/Models.swift Current/Analysis/AnalysisModels.swift Current/Analysis/LyricsModels.swift \
+for FILE in Current/Core/Models.swift Current/Core/RecommendationQuery.swift Current/Analysis/AnalysisModels.swift Current/Analysis/LyricsModels.swift \
  Current/Analysis/SemanticModels.swift Current/Analysis/AcousticDSP.swift \
  Current/Analysis/DCLAPFrontend.swift Current/Analysis/DCLAPAnalyzer.swift \
  Current/Diagnostics/AppLog.swift Tests/SemanticChecks.swift; do

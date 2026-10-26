@@ -41,7 +41,7 @@ enum LogScope { @TaskLocal static var trace: UUID? }
 
 enum LogFailure: String, Codable {
     case openRouterMissingKey, openRouterKeychain, openRouterUnavailable, openRouterInvalidQuery, openRouterUnsupported
-    case openRouterRejected, openRouterRateLimited, openRouterNetwork, openRouterService, openRouterMissingBPM, openRouterIncomplete
+    case openRouterRejected, openRouterRateLimited, openRouterNetwork, openRouterService, openRouterMissingBPM, openRouterMissingGenre, openRouterMissingConcept, openRouterIncomplete
     case lyricsModel, lyricsVersion, lyricsVector, lyricsInference, lyricsStorage
     case genreModel, genreVersion, genreOutput, genreInference
     case semanticModel, semanticVersion, semanticVector, semanticInference, semanticStorage
