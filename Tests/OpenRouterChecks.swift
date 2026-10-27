@@ -44,12 +44,17 @@ final class RouterHTTP: URLProtocol {
                 "message": ["role": "assistant", "content": content]]]])
     }
     static func main() async throws {
+        precondition(DeepSeekProvider.keychainService != OpenRouterProvider.keychainService)
+        try await checkProvider(OpenRouterProvider.self)
+        try await checkProvider(DeepSeekProvider.self)
+    }
+    static func checkProvider<P: IntentAPIProvider>(_ provider: P.Type) async throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [RouterHTTP.self]
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
         let trace = RouterTrace()
-        let resolver = OpenRouterIntentResolver(session: session, key: { "fixture-only-key" }, diagnostics: { trace.append($0) })
+        let resolver = IntentAPIResolver<P>(session: session, key: { "fixture-only-key" }, diagnostics: { trace.append($0) })
         let concepts = [IntentConcept(id: "romantic", label: "浪漫", definition: "亲密温暖"),
                         IntentConcept(id: "energetic", label: "激烈", definition: "强烈推进感"),
                         IntentConcept(id: "house", label: "House", definition: "House 节奏"),
@@ -61,16 +66,27 @@ final class RouterHTTP: URLProtocol {
         var requests = 0
         RouterHTTP.handler = { request in
             requests += 1
-            precondition(request.url?.scheme == "https" && request.url?.host == "openrouter.ai")
-            precondition(request.url?.path == "/api/v1/chat/completions")
+            precondition(request.url?.scheme == "https" && request.url?.host == P.host)
+            precondition(request.url?.path == P.basePath + "/chat/completions")
             precondition(request.url?.port == nil || request.url?.port == 443)
             precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-only-key")
             let body = try JSONSerialization.jsonObject(with: requestBody(request)) as! [String: Any]
-            precondition(body["model"] as? String == "openrouter/free")
-            precondition((body["provider"] as? [String: Bool])?["require_parameters"] == true)
+            precondition(body["model"] as? String == P.model)
             let format = body["response_format"] as! [String: Any]
-            precondition(format["type"] as? String == "json_schema")
-            precondition((format["json_schema"] as? [String: Any])?["strict"] as? Bool == true)
+            if P.host == DeepSeekProvider.host {
+                precondition(body["provider"] == nil && body["max_completion_tokens"] == nil)
+                precondition(body["max_tokens"] as? Int == 4096)
+                precondition((body["thinking"] as? [String: String])?["type"] == "disabled")
+                precondition(format["type"] as? String == "json_object" && format["json_schema"] == nil)
+                let messages = body["messages"] as! [[String: Any]]
+                let system = messages.first?["content"] as! String
+                precondition(system.contains("Output JSON schema:") && system.contains("bpmRequired"))
+                precondition(system.contains("encyclopediaFamily"))
+            } else {
+                precondition((body["provider"] as? [String: Bool])?["require_parameters"] == true)
+                precondition(format["type"] as? String == "json_schema")
+                precondition((format["json_schema"] as? [String: Any])?["strict"] as? Bool == true)
+            }
             precondition(body["stream"] as? Bool != true)
             return (200, good)
         }
@@ -79,12 +95,12 @@ final class RouterHTTP: URLProtocol {
         precondition(parsed.preferences[1].direction == .avoid && requests == 1)
         precondition(trace.entries.map(\.event) == [.started, .response, .succeeded])
         precondition(trace.entries[1].status == 200 && Set(trace.entries.map(\.span)).count == 1)
-        print("PASS actual MacPaw SDK: URL, authorization, free model, provider routing, strict schema and query decoding")
+        print("PASS \(P.host): SDK URL, authorization, model, response format and query decoding")
         for status in [401, 402, 403, 429, 503] {
             RouterHTTP.handler = { _ in (status, Data("{\"error\":{\"code\":\(status),\"message\":\"private provider message\"}}".utf8)) }
             do { _ = try await resolver.resolve(text: "浪漫", concepts: concepts); fatalError("status accepted") }
             catch let error as OpenRouterFailure {
-                precondition(error.localizedDescription == OpenRouterIntentResolver.failure(status: status).localizedDescription)
+                precondition(error.localizedDescription == IntentAPIResolver<P>.failure(status: status).localizedDescription)
                 precondition(!error.localizedDescription.contains("private"))
             }
         }
@@ -211,7 +227,10 @@ final class RouterHTTP: URLProtocol {
         print("PASS conjunctive query contract: 120±10 range, required/optional terms, omission/downgrade rejection and legacy-local-only decoding")
         let wikiGenre = GenreReference(source: .encyclopedia, value: "电子-House").concept
         let audioGenre = GenreReference(source: .audioStyle, value: "Electronic---Deep House").concept
-        let sourceConcepts = concepts + [wikiGenre, audioGenre]
+        let wikiFamily = GenreReference(source: .encyclopediaFamily, value: "电子").concept
+        let audioFamily = GenreReference(source: .audioFamily, value: "Electronic").concept
+        let sourceConcepts = concepts + [wikiGenre, audioGenre, wikiFamily, audioFamily]
+        precondition(wikiGenre.definition.contains(wikiFamily.id) && audioGenre.definition.contains(audioFamily.id))
         query["bpmTarget"] = NSNull(); query["bpmRequired"] = false
         query["preferences"] = [["concept": "house", "direction": "prefer", "weight": 1, "requirement": "required"],
                                 ["concept": wikiGenre.id, "direction": "prefer", "weight": 1, "requirement": "required"]]
@@ -222,6 +241,7 @@ final class RouterHTTP: URLProtocol {
             let system = messages[0]["content"] as! String
             precondition(system.contains(wikiGenre.id) && system.contains(audioGenre.id))
             precondition(system.contains("independent source vocabularies") && system.contains("unverified metadata"))
+            precondition(system.contains("explicit parent-child relationships") && system.contains(wikiFamily.id))
             return (200, sourcesResponse)
         }
         let sources = try await resolver.resolve(text: "House歌曲", concepts: sourceConcepts)
@@ -230,10 +250,18 @@ final class RouterHTTP: URLProtocol {
         do { _ = try RecommendationQuery.decode(try JSONSerialization.data(withJSONObject: query), allowedConcepts: Set(concepts.map(\.id))); fatalError("unavailable source label accepted") }
         catch OpenRouterFailure.invalidQuery {}
         print("PASS actual SDK receives both independent source vocabularies, preserves original labels, validates selected source IDs and source-aware summary")
+        query["preferences"] = [["concept": wikiFamily.id, "direction": "prefer", "weight": 1, "requirement": "required"],
+                                ["concept": wikiGenre.id, "direction": "avoid", "weight": 1, "requirement": "required"]]
+        let hierarchyResponse = try response(query)
+        RouterHTTP.handler = { _ in (200, hierarchyResponse) }
+        let hierarchy = try await resolver.resolve(text: "电子但不要House", concepts: sourceConcepts)
+        precondition(hierarchy.preferences[0].genreReference?.source == .encyclopediaFamily)
+        precondition(hierarchy.preferences[1].direction == .avoid)
+        print("PASS model context contains parent-child links; model-generated family inclusion and child exclusion decode without manual UI overrides")
         RouterHTTP.handler = { _ in throw URLError(.notConnectedToInternet) }
         do { _ = try await resolver.resolve(text: "fixture", concepts: concepts); fatalError("offline accepted") }
         catch OpenRouterFailure.network {}
-        let missing = OpenRouterIntentResolver(session: session, key: { "" })
+        let missing = IntentAPIResolver<P>(session: session, key: { "" })
         do { _ = try await missing.resolve(text: "fixture", concepts: concepts); fatalError("missing key accepted") }
         catch OpenRouterFailure.missingKey {}
         print("PASS invalid bounds/concepts/weights, unsupported criteria, truncation, nullable BPM, offline and missing key")

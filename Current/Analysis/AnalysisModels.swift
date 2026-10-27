@@ -222,6 +222,26 @@ extension GenreAnalysis {
     var filterLabels: Set<String> { filterFamilies.union(filterStyles) }
 }
 
+extension GenreChoiceGroup {
+    static func audio(_ analyses: [GenreAnalysis]) -> [Self] {
+        let grouped = Dictionary(grouping: analyses.flatMap(\.supportedMatches), by: \.family)
+        return grouped.keys.sorted().map { family in
+            let matches = grouped[family] ?? []
+            let styles = Dictionary(grouping: matches, by: \.style).keys.sorted()
+            var children = styles.map { style in
+                Option(id: GenreNames.translate(style),
+                       title: GenreNames.translate(style))
+            }
+            if family == "Electronic", analyses.contains(where: { RecommendationGenre.house.hasEvidence(in: $0) }),
+               !children.contains(where: { $0.id == "House" }) {
+                children.append(Option(id: "House", title: "House（含子风格）"))
+            }
+            return Self(id: GenreNames.translate(family),
+                        title: GenreNames.translate(family), children: children)
+        }
+    }
+}
+
 extension RecommendationQuery {
     func matchesGenres(_ analysis: GenreAnalysis?, wiki: Set<String> = []) -> Bool {
         let required = preferences.filter { $0.isGenre && $0.requirement == .required }
@@ -237,7 +257,10 @@ extension RecommendationQuery.Preference {
         if let genre { return genre.hasEvidence(in: analysis) }
         guard let reference = genreReference else { return false }
         switch reference.source {
-        case .encyclopedia: return wiki.contains(reference.value)
+        case .encyclopedia:
+            let target = WikiGenre(reference.value)
+            return wiki.contains { WikiGenre($0) == target }
+        case .encyclopediaFamily: return wiki.contains { WikiGenre($0).family == reference.value }
         case .audioFamily: return analysis?.supportedMatches.contains { $0.family == reference.value } == true
         case .audioStyle: return analysis?.supportedMatches.contains { "\($0.family)---\($0.style)" == reference.value } == true
         }
@@ -252,7 +275,7 @@ extension PoolSong {
     func matchesGenreFilters(audio: Set<String>, encyclopedia: Set<String>) -> Bool {
         (audio.isEmpty && encyclopedia.isEmpty)
             || (!audio.isEmpty && !audio.isDisjoint(with: genres?.filterLabels ?? []))
-            || (!encyclopedia.isEmpty && !encyclopedia.isDisjoint(with: wikiGenreLabels))
+            || encyclopedia.contains { WikiGenre.matches($0, labels: wikiGenreLabels) }
     }
 }
 enum GenreError: LocalizedError, SafeLogError {

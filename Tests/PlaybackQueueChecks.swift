@@ -5,10 +5,12 @@ import Combine
 @MainActor final class PlaybackController: ObservableObject {
     @Published var playing = false
     var position: Double = 0
+    private(set) var loadedTrack: Track?
+    private(set) var loadCount = 0
     var onNext: (() -> Void)?
     var onPrevious: (() -> Void)?
     var onLike: (() -> Void)?
-    func load(_ song: Track, api: NetEaseAPI, next: Track? = nil) async { playing = true }
+    func load(_ song: Track, api: NetEaseAPI, next: Track? = nil) async { loadedTrack = song; loadCount += 1; playing = true }
     func pause() { playing = false }
     func seek(_ time: Double) { position = time }
     func stop() { playing = false; position = 0 }
@@ -16,7 +18,7 @@ import Combine
 
 @main struct PlaybackQueueChecks {
     struct Archive: Codable { var sessions: [ListeningSession]; var feedback: [Feedback] = [] }
-    @MainActor static func main() throws {
+    @MainActor static func main() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -52,6 +54,51 @@ import Combine
         precondition(RecommendationPlaylist(candidates: ranked + ranked).tracks == ranked)
         print("PASS full playlist: all 29 tracks immediately, no refill, end/explicit restart without growth, legacy batched migration, query/history persistence and deduplication")
 
+        let preview = AppStore(archiveURL: folder.appendingPathComponent("preview/history.json"))
+        preview.enterDemo()
+        let query = initial.recommendationQuery!
+        try preview.stageRecommendation(prompt: "first", tracks: ranked + ranked, query: query)
+        precondition(preview.generatedPlaylist?.tracks == ranked && preview.queue.isEmpty)
+        precondition(preview.currentTrack == nil && preview.player.loadCount == 0 && !preview.player.playing)
+        precondition(preview.message == nil && !preview.generatedPlaylistIsActive)
+        preview.playGeneratedPlaylist(at: 7)
+        await Task.yield()
+        precondition(preview.queue == ranked && preview.currentIndex == 7 && preview.generatedPlaylistIsActive)
+        precondition(preview.activePrompt == "first" && preview.canRepeatRecommendation)
+        while preview.player.loadedTrack == nil { await Task.yield() }
+        preview.player.position = 12
+        let loads = preview.player.loadCount
+        let activeTrack = preview.player.loadedTrack
+        let second = Array(ranked.suffix(3))
+        try preview.stageRecommendation(prompt: "second", tracks: second, query: query)
+        precondition(preview.generatedPlaylist?.tracks == second && !preview.generatedPlaylistIsActive)
+        precondition(preview.queue == ranked && preview.currentIndex == 7 && preview.activePrompt == "first")
+        precondition(preview.player.playing && preview.player.position == 12 && preview.player.loadedTrack == activeTrack)
+        precondition(preview.player.loadCount == loads && preview.message == nil)
+        precondition(preview.activeRecommendationSummary?.contains("110–130 BPM") == true)
+        do {
+            try preview.stageRecommendation(prompt: "empty", tracks: [], query: query)
+            fatalError("empty playlist accepted")
+        } catch CurrentError.message {}
+        precondition(preview.generatedPlaylist?.prompt == "second" && preview.currentIndex == 7)
+        preview.playGeneratedPlaylist(at: 999)
+        precondition(preview.queue == ranked && preview.currentIndex == 7)
+        preview.cancelGeneration()
+        precondition(preview.generatedPlaylist?.prompt == "second" && preview.queue == ranked)
+        preview.playGeneratedPlaylist()
+        precondition(preview.queue == second && preview.currentIndex == 0 && preview.generatedPlaylistIsActive)
+        preview.play(at: second.count - 1); preview.next(); preview.continueWithRepeats()
+        precondition(preview.queue == second && preview.currentIndex == 0 && !preview.queueEnded)
+        let previewArchive = try JSONDecoder().decode(Archive.self,
+            from: Data(contentsOf: folder.appendingPathComponent("preview/history.json")))
+        precondition(previewArchive.sessions.count == 2 && previewArchive.sessions.first?.tracks == second)
+        precondition(previewArchive.sessions.last?.tracks == ranked)
+        await preview.signOut()
+        precondition(preview.generatedPlaylist == nil && preview.generationError == nil && preview.queue.isEmpty)
+        preview.playGeneratedPlaylist()
+        precondition(preview.queue.isEmpty)
+        print("PASS generated playlist preview: no autoplay/toast, unchanged active audio and feedback context, explicit row/all playback, empty/invalid guards, persistence, repeat, cancellation and logout cleanup")
+
         let legacy = ListeningSession(prompt: "legacy", tracks: [ranked[0]], createdAt: Date(), listenerID: nil)
         store.replay(legacy); store.player.onNext?(); store.continueWithRepeats()
         precondition(store.activeRecommendationSummary == nil)
@@ -77,5 +124,35 @@ import Combine
         reopened.play(at: 1); reopened.next(); reopened.continueWithRepeats()
         precondition(reopened.currentIndex == 0 && reopened.queue.count == 2)
         print("PASS AppStore: legacy finite history, account isolation and single-candidate repeat")
+
+        let libraryFolder = folder.appendingPathComponent("library")
+        let libraryStore = AppStore(archiveURL: libraryFolder.appendingPathComponent("history.json"))
+        var catalog = PoolCatalog()
+        _ = catalog.enqueue(Array(ranked.prefix(3)), account: "demo", source: "library check")
+        for index in 0..<2 { catalog.songs[index].state = .completed }
+        let poolFolder = libraryFolder.appendingPathComponent("UITestSongPool")
+        try FileManager.default.createDirectory(at: poolFolder, withIntermediateDirectories: true)
+        try JSONEncoder().encode(catalog).write(to: poolFolder.appendingPathComponent("song-pool.json"))
+        while libraryStore.pool.loading { await Task.yield() }
+        libraryStore.pool.activate(account: "demo")
+        let selection = [catalog.songs[1].id, catalog.songs[0].id]
+        libraryStore.playLibrary(selection, account: "demo")
+        precondition(libraryStore.queue.isEmpty, "Logged-out playback must be ignored")
+        libraryStore.enterDemo()
+        libraryStore.replay(initial)
+        libraryStore.play(at: 28); libraryStore.next()
+        libraryStore.playLibrary(selection, account: "demo")
+        await Task.yield()
+        precondition(libraryStore.queue == [ranked[1], ranked[0]] && libraryStore.currentIndex == 0)
+        precondition(libraryStore.player.playing && !libraryStore.queueEnded && !libraryStore.canRepeatRecommendation)
+        precondition(libraryStore.activeRecommendationSummary == nil && libraryStore.activePrompt == "曲库筛选")
+        libraryStore.playLibrary([], account: "demo")
+        libraryStore.playLibrary(selection, account: "netease:123")
+        libraryStore.playLibrary([UUID()], account: "demo")
+        libraryStore.playLibrary([catalog.songs[2].id], account: "demo")
+        precondition(libraryStore.queue == [ranked[1], ranked[0]])
+        libraryStore.playLibrary([catalog.songs[0].id], account: "demo")
+        precondition(libraryStore.queue == [ranked[0]] && libraryStore.currentIndex == 0)
+        print("PASS library play-all: ordered replacement, first-track playback, recommendation reset, empty/stale/account guards and repeated replacement")
     }
 }

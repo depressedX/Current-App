@@ -85,6 +85,10 @@ actor AnalysisProbe {
             archive.songs[i].genres = GenreAnalysis(matches: [GenreMatch(index: fixture.3 ? 91 : 125, family: "Electronic",
                 style: fixture.3 ? "House" : "Synth-pop", score: 0.7)], windows: 10, duration: 20, analyzedAt: Date())
         }
+        for (index, label) in [(0, "电子 - Synth-pop"), (1, "电子"), (5, "电子舞曲-House")] {
+            archive.songs[index].wikiMetadata = SongWikiMetadata(songID: archive.songs[index].track.id, fetchedAt: Date(), bpm: nil,
+                fields: [.init(kind: "songTag", title: "曲风", values: [label])])
+        }
         let url = root.appendingPathComponent("pool.json")
         try JSONEncoder().encode(archive).write(to: url)
         let pool = SongPoolStore(fileURL: url, resolve: { _ in audio }, concepts: catalog)
@@ -134,6 +138,38 @@ actor AnalysisProbe {
                           .init(concept: wikiID, direction: .avoid, weight: 1)], unsupported: [])
         precondition(!excluding.matchesGenres(archive.songs[4].genres, wiki: archive.songs[4].wikiGenreLabels))
         precondition(!excluding.matchesGenres(archive.songs[0].genres, wiki: []))
+        let familyID = GenreReference(source: .encyclopediaFamily, value: "电子").id
+        precondition(pool.intentConcepts.contains { $0.id == familyID })
+        precondition(WikiGenre(" 嘻哈说唱 - 情绪说唱 ").family == "嘻哈说唱")
+        precondition(WikiGenre("电子 - Synth-pop").style == "Synth-pop")
+        precondition(WikiGenre("慢摇DJ").style == nil)
+        precondition(WikiGenre.matches("电子", labels: ["电子", "电子-House"]))
+        precondition(!WikiGenre.matches("电子", labels: ["电子舞曲-House"]))
+        precondition(!WikiGenre.matches("电子-House", labels: ["电子", "电子-Synth-pop"]))
+        precondition(WikiGenre.matches("电子 - Synth-pop", labels: ["电子-Synth-pop"]))
+        precondition(archive.songs[0].matchesGenreFilters(audio: [], encyclopedia: ["电子"]))
+        precondition(archive.songs[1].matchesGenreFilters(audio: [], encyclopedia: ["电子"]))
+        precondition(!archive.songs[5].matchesGenreFilters(audio: [], encyclopedia: ["电子"]))
+        let groups = GenreChoiceGroup.encyclopedia(["电子 - Synth-pop", "电子-House", "电子", "摇滚"])
+        precondition(groups.count == 2 && groups.first { $0.id == "电子" }?.children.count == 2)
+        precondition(groups.first { $0.id == "摇滚" }?.children.isEmpty == true)
+        let modelQuery = RecommendationQuery(summary: "电子但不要House，伤感，120 BPM左右", bpmMinimum: nil, bpmMaximum: nil,
+            bpmRequired: true, preferences: [.init(concept: familyID, direction: .prefer, weight: 1),
+                .init(concept: wikiID, direction: .avoid, weight: 1), required.preferences[1]], unsupported: [], bpmTarget: 120)
+        precondition(modelQuery.preferences.contains { $0.concept == "melancholic" })
+        precondition(!modelQuery.preferences.contains { $0.concept == "house" })
+        precondition(modelQuery.bpmTarget == 120 && modelQuery.bpmRequired)
+        let familyTracks = try await pool.recommendationQueue(query: modelQuery)
+        precondition(Set(familyTracks.map(\.id)) == [30000, 30001])
+        let decodedQuery = try JSONDecoder().decode(RecommendationQuery.self, from: JSONEncoder().encode(modelQuery))
+        precondition(decodedQuery.displaySummary(concepts: pool.intentConcepts).contains("百科：电子"))
+        let optionalGenre = RecommendationQuery(summary: "优先电子，减少House", bpmMinimum: nil, bpmMaximum: nil,
+            bpmRequired: true, preferences: [.init(concept: familyID, direction: .prefer, weight: 1, requirement: .preferred),
+                .init(concept: wikiID, direction: .avoid, weight: 1, requirement: .preferred), required.preferences[1]], unsupported: [], bpmTarget: 120)
+        precondition(optionalGenre.preferences.filter(\.isGenre).allSatisfy { $0.requirement == .preferred })
+        let optionalGenreTracks = try await pool.recommendationQueue(query: optionalGenre)
+        precondition(Set(optionalGenreTracks.map(\.id)) == [30000, 30001, 30002, 30004])
+        print("PASS hierarchical genres: first separator, parent/child boundaries, bare parent, shared filter semantics, include parent/exclude child, optional ranking and saved query")
         print("PASS independent audio/wiki genre sources: OR retrieval and manual filters, encyclopedia-only evidence, negative union, full-vector mood/BPM intersection, source vocabularies and non-genre metadata isolation")
         let boundary = RecommendationQuery.Preference(concept: "melancholic", direction: .prefer, weight: 1)
         precondition(boundary.accepts(similarity: 0.25) && !boundary.accepts(similarity: 0.249))

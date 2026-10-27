@@ -23,8 +23,10 @@ final class AppStore: ObservableObject {
     @Published private(set) var activePrompt = ""
     @Published private(set) var sessions: [ListeningSession] = []
     @Published private(set) var feedback: [Feedback] = []
+    @Published private(set) var generatedPlaylist: ListeningSession?
+    @Published private(set) var generationError: String?
     @Published private(set) var generating = false
-    @Published private(set) var openRouterConfigured = OpenRouterKeyStore.hasKey
+    @Published private(set) var deepSeekConfigured = DeepSeekKeyStore.hasKey
     @Published private(set) var canRepeatRecommendation = false
     @Published private(set) var queueEnded = false
     @Published private(set) var libraryLoading = false
@@ -35,7 +37,7 @@ final class AppStore: ObservableObject {
     private var generationTask: Task<Void, Never>?
     private var generationID = UUID()
     private var playbackTask: Task<Void, Never>?
-    private var activeSessionID: UUID?
+    private var activeRecommendation: ListeningSession?
     private var loadingPlaylists = false
     private var cancellables = Set<AnyCancellable>()
     private let historyURL: URL
@@ -45,8 +47,8 @@ final class AppStore: ObservableObject {
     var visibleSessions: [ListeningSession] { sessions.filter { $0.listenerID == scope }.sorted { $0.createdAt > $1.createdAt } }
     var visibleFeedback: [Feedback] { feedback.filter { $0.listenerID == scope }.reversed() }
     var activeRecommendationSummary: String? {
-        guard let id = activeSessionID,
-              let query = sessions.first(where: { $0.id == id && $0.listenerID == scope })?.recommendationQuery else { return nil }
+        guard let session = activeRecommendation, session.listenerID == scope,
+              let query = session.recommendationQuery else { return nil }
         return query.displaySummary(concepts: pool.intentConcepts)
     }
     init(archiveURL: URL? = nil) {
@@ -90,6 +92,17 @@ final class AppStore: ObservableObject {
             sessions = saved.sessions; feedback = saved.feedback
         }
         player.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        #if os(iOS)
+        player.originalBPMForTrack = { [weak self] track in
+            guard let self else { return nil }
+            let expected = self.listener.map { "netease:\($0.id)" } ?? (self.demoMode ? "demo" : "guest")
+            guard self.pool.account == expected else { return nil }
+            return self.pool.songs.first(where: { $0.track.id == track.id })?.resolvedBPM
+        }
+        pool.$catalog.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            self?.player.refreshOriginalBPM()
+        }.store(in: &cancellables)
+        #endif
         player.onNext = { [weak self] in self?.next() }
         player.onPrevious = { [weak self] in self?.previous() }
         player.onLike = { [weak self] in
@@ -101,6 +114,12 @@ final class AppStore: ObservableObject {
             demoMode = true; queue = Array(DemoCatalog.tracks.prefix(2)); activePrompt = "输入交互验收"
         }
         if testing && ProcessInfo.processInfo.arguments.contains("-ui-testing-library-genres") { demoMode = true }
+        if testing && ProcessInfo.processInfo.arguments.contains("-ui-testing-playlist-preview") {
+            demoMode = true
+            try? stageRecommendation(prompt: "阴郁一点的 House", tracks: Array(DemoCatalog.tracks.prefix(3)),
+                query: RecommendationQuery(summary: "阴郁的 House", bpmMinimum: 110, bpmMaximum: 130, bpmRequired: true,
+                    preferences: [.init(concept: "house", direction: .prefer, weight: 1)], unsupported: []))
+        }
     }
     func restoreSession() async {
         guard !restored else { return }; restored = true
@@ -170,8 +189,9 @@ final class AppStore: ObservableObject {
     func generate(prompt: String) {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !generating else { return }
-        guard listener != nil || demoMode else { error = "先连接网易云，或进入演示空间。"; return }
-        guard openRouterConfigured else { error = OpenRouterFailure.missingKey.localizedDescription; return }
+        generationError = nil
+        guard listener != nil || demoMode else { generationError = "先连接网易云，或进入演示空间。"; return }
+        guard deepSeekConfigured else { generationError = IntentResolutionFailure.missingKey.localizedDescription; return }
         generating = true; error = nil
         let ticket = accountEpoch
         let requestID = UUID(); generationID = requestID
@@ -180,7 +200,7 @@ final class AppStore: ObservableObject {
             defer { if ticket == accountEpoch && requestID == generationID { generating = false } }
             var ranking = false
             do {
-                let intent = try await OpenRouterIntentResolver(diagnostics: OpenRouterDiagnostic.record).resolve(text: text, concepts: pool.intentConcepts)
+                let intent = try await DeepSeekIntentResolver(diagnostics: IntentAPIDiagnostic.record).resolve(text: text, concepts: pool.intentConcepts)
                 try Task.checkCancellation()
                 guard ticket == accountEpoch, requestID == generationID, poolAccount == pool.account else { return }
                 ranking = true
@@ -189,34 +209,57 @@ final class AppStore: ObservableObject {
                 AppLog.shared.record(.analysis, .succeeded, operation: .recommendationQueue, span: requestID, count: tracks.count)
                 try Task.checkCancellation()
                 guard ticket == accountEpoch, requestID == generationID else { return }
-                let result = RecommendationPlaylist(candidates: tracks).tracks
-                guard !result.isEmpty else { throw CurrentError.message("歌曲池中还没有可推荐的听感结果。") }
-                activePrompt = text; queue = result; currentIndex = 0
-                canRepeatRecommendation = true
-                let session = ListeningSession(prompt: text, tracks: result, createdAt: Date(), listenerID: scope,
-                                               recommendationQuery: intent, allowsRepeat: true)
-                activeSessionID = session.id
-                sessions.insert(session, at: 0)
-                sessions = Array(sessions.prefix(30)); persist()
-                let countMessage = "匹配 \(result.count) 首，已全部加入。"
-                message = "\(intent.displaySummary(concepts: pool.intentConcepts)) · \(countMessage)"
-                play(at: 0)
+                try stageRecommendation(prompt: text, tracks: tracks, query: intent)
             } catch is CancellationError {} catch {
                 if ranking { AppLog.shared.record(.analysis, .failed, level: .error, operation: .recommendationQueue, span: requestID, error: error) }
-                if ticket == accountEpoch && requestID == generationID { self.error = error.localizedDescription }
+                if ticket == accountEpoch && requestID == generationID { self.generationError = error.localizedDescription }
             }
         }
     }
-    func saveOpenRouterKey(_ key: String) throws {
-        try OpenRouterKeyStore.save(key)
-        cancelGeneration(); openRouterConfigured = true
+    // Preparing a result never changes transport state. Playback starts only on an explicit action.
+    func stageRecommendation(prompt: String, tracks: [Track], query: RecommendationQuery) throws {
+        guard listener != nil || demoMode else { return }
+        let result = RecommendationPlaylist(candidates: tracks).tracks
+        guard !result.isEmpty else { throw CurrentError.message("暂时没有符合条件的歌曲，试着调整需求或补充歌曲池。") }
+        let session = ListeningSession(prompt: prompt, tracks: result, createdAt: Date(), listenerID: scope,
+                                       recommendationQuery: query, allowsRepeat: true)
+        generationError = nil
+        generatedPlaylist = session
+        sessions.insert(session, at: 0)
+        sessions = Array(sessions.prefix(30)); persist()
     }
-    func clearOpenRouterKey() throws {
-        try OpenRouterKeyStore.clear()
-        cancelGeneration(); openRouterConfigured = false
+    var generatedPlaylistIsActive: Bool {
+        guard let generatedPlaylist else { return false }
+        return generatedPlaylist.id == activeRecommendation?.id
     }
-    private func cancelGeneration() {
+    func playGeneratedPlaylist(at index: Int = 0) {
+        guard let session = generatedPlaylist, session.tracks.indices.contains(index) else { return }
+        replay(session, startingAt: index)
+    }
+    func dismissGenerationError() { generationError = nil }
+    func saveDeepSeekKey(_ key: String) throws {
+        try DeepSeekKeyStore.save(key)
+        cancelGeneration(); deepSeekConfigured = true
+    }
+    func clearDeepSeekKey() throws {
+        try DeepSeekKeyStore.clear()
+        cancelGeneration(); deepSeekConfigured = false
+    }
+    func cancelGeneration() {
         generationID = UUID(); generationTask?.cancel(); generating = false
+    }
+    func playLibrary(_ songIDs: [UUID], account: String) {
+        let expectedAccount = listener.map { "netease:\($0.id)" } ?? (demoMode ? "demo" : nil)
+        guard account == expectedAccount, account == pool.account, !songIDs.isEmpty else { return }
+        let available = Dictionary(uniqueKeysWithValues: pool.songs.filter { $0.state == .completed }.map { ($0.id, $0.track) })
+        let tracks = songIDs.compactMap { available[$0] }
+        guard tracks.count == songIDs.count else { return }
+        cancelGeneration()
+        clearRecommendation()
+        activePrompt = "曲库筛选"
+        queue = tracks
+        message = "已替换播放列表，共 \(tracks.count) 首。"; error = nil
+        play(at: 0)
     }
     func playLyrics(_ matches: [LyricsSearchMatch], selected: UUID, query: String, account: String) {
         guard let listener, account == pool.account, account == "netease:\(listener.id)",
@@ -230,13 +273,14 @@ final class AppStore: ObservableObject {
         queue = matches.map(\.track)
         play(at: selectedIndex)
     }
-    func replay(_ session: ListeningSession) {
+    func replay(_ session: ListeningSession, startingAt index: Int = 0) {
         guard session.listenerID == scope else { return }
         guard demoMode || listener != nil else { return }
+        let tracks = RecommendationPlaylist(candidates: session.rankedCandidates ?? session.tracks).tracks
+        guard tracks.indices.contains(index) else { return }
         cancelGeneration()
         clearRecommendation()
-        let tracks = RecommendationPlaylist(candidates: session.rankedCandidates ?? session.tracks).tracks
-        activeSessionID = session.id
+        activeRecommendation = session
         canRepeatRecommendation = session.allowsRepeat == true || session.recommendationQuery != nil || session.rankedCandidates != nil
         activePrompt = session.prompt; queue = tracks
         if let index = sessions.firstIndex(where: { $0.id == session.id && $0.listenerID == scope }),
@@ -245,7 +289,7 @@ final class AppStore: ObservableObject {
                                         listenerID: session.listenerID, recommendationQuery: session.recommendationQuery, allowsRepeat: true)
             full.id = session.id; sessions[index] = full; persist()
         }
-        play(at: 0)
+        play(at: index)
     }
     func play(at index: Int) {
         guard queue.indices.contains(index) else { return }
@@ -269,7 +313,7 @@ final class AppStore: ObservableObject {
         play(at: 0)
     }
     private func clearRecommendation() {
-        activeSessionID = nil
+        activeRecommendation = nil
         canRepeatRecommendation = false; queueEnded = false
     }
     func previous() {
@@ -303,6 +347,7 @@ final class AppStore: ObservableObject {
     }
     private func resetPlayback() {
         clearRecommendation()
+        generatedPlaylist = nil; generationError = nil
         cancelGeneration(); playbackTask?.cancel()
         player.stop(); queue = []; currentIndex = 0; activePrompt = ""
     }
@@ -317,7 +362,7 @@ final class AppStore: ObservableObject {
     }
 }
 
-extension OpenRouterDiagnostic {
+extension IntentAPIDiagnostic {
     static func record(_ diagnostic: Self) {
         let event: LogEvent
         switch diagnostic.event {
@@ -327,27 +372,27 @@ extension OpenRouterDiagnostic {
         case .failed: event = .failed
         case .cancelled: event = .cancelled
         }
-        AppLog.shared.record(.api, event, level: event == .failed ? .error : .info, operation: .openRouterRequest,
+        AppLog.shared.record(.api, event, level: event == .failed ? .error : .info, operation: diagnostic.providerHost == DeepSeekProvider.host ? .deepSeekRequest : .openRouterRequest,
                              span: diagnostic.span, status: diagnostic.status, elapsed: diagnostic.elapsed, error: diagnostic.failure)
     }
 }
 
-extension OpenRouterFailure: SafeLogError {
+extension IntentResolutionFailure: SafeLogError {
     var logFailure: LogFailure {
         switch self {
-        case .missingKey: return .openRouterMissingKey
-        case .keychain: return .openRouterKeychain
-        case .unavailable: return .openRouterUnavailable
-        case .invalidQuery: return .openRouterInvalidQuery
-        case .unsupported: return .openRouterUnsupported
-        case .rejected: return .openRouterRejected
-        case .rateLimited: return .openRouterRateLimited
-        case .network: return .openRouterNetwork
-        case .service: return .openRouterService
-        case .missingBPM: return .openRouterMissingBPM
-        case .missingGenre: return .openRouterMissingGenre
-        case .missingConcept: return .openRouterMissingConcept
-        case .incomplete: return .openRouterIncomplete
+        case .missingKey: return .intentMissingKey
+        case .keychain: return .intentKeychain
+        case .unavailable: return .intentUnavailable
+        case .invalidQuery: return .intentInvalidQuery
+        case .unsupported: return .intentUnsupported
+        case .rejected: return .intentRejected
+        case .rateLimited: return .intentRateLimited
+        case .network: return .intentNetwork
+        case .service: return .intentService
+        case .missingBPM: return .intentMissingBPM
+        case .missingGenre: return .intentMissingGenre
+        case .missingConcept: return .intentMissingConcept
+        case .incomplete: return .intentIncomplete
         }
     }
 }

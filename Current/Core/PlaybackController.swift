@@ -11,6 +11,12 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var duration: Double = 0
     @Published private(set) var error: String?
     @Published private(set) var showLoading = false
+    @Published private(set) var tempo = PlaybackTempo()
+    /// Supplied by AppStore, scoped to the active song-pool account.
+    var originalBPMForTrack: ((Track) -> Double?)?
+    private let tempoDefaults: UserDefaults
+    private var tempoRamp: Task<Void, Never>?
+    private static let targetKey = "current.playback.target-bpm"
     private let player: AVPlayer
     private let systemIntegration: Bool
     private let artworkCache: ArtworkCache
@@ -36,13 +42,19 @@ final class PlaybackController: ObservableObject {
     private var interruptions: NSObjectProtocol?
     private var routeChanges: NSObjectProtocol?
     private var generation = UUID()
+    private var pendingSeek: UUID?
     private var shouldResume = false
     private var track: Track?
     var onNext: (() -> Void)?
     var onPrevious: (() -> Void)?
     var onLike: (() -> Void)?
-    init(player: AVPlayer = AVPlayer(), systemIntegration: Bool = true, artworkCache: ArtworkCache = .shared) {
+    init(player: AVPlayer = AVPlayer(), systemIntegration: Bool = true, artworkCache: ArtworkCache = .shared,
+         tempoDefaults: UserDefaults = .standard) {
         self.player = player; self.systemIntegration = systemIntegration; self.artworkCache = artworkCache
+        self.tempoDefaults = tempoDefaults
+        if let last = tempoDefaults.object(forKey: Self.targetKey) as? Double {
+            tempo.targetBPM = PlaybackTempo.snappedTarget(last)
+        }
         observation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             Task { @MainActor in
                 guard let self else { return }
@@ -53,8 +65,9 @@ final class PlaybackController: ObservableObject {
         }
         timer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
             Task { @MainActor in
-                guard let self else { return }
-                self.position = time.seconds.isFinite ? max(0, time.seconds) : 0
+                guard let self, self.pendingSeek == nil else { return }
+                let seconds = self.player.currentTime().seconds
+                self.position = seconds.isFinite ? max(0, seconds) : 0
                 self.publishNowPlaying()
             }
         }
@@ -108,12 +121,14 @@ final class PlaybackController: ObservableObject {
     func load(_ song: Track, next: Track? = nil, resolve: @escaping (Track) async throws -> URL) async {
         guard !Task.isCancelled else { return }
         let ticket = UUID(); generation = ticket
+        pendingSeek = nil
         AppLog.shared.record(.playback, .started, operation: .playback, span: ticket)
         statusObservation = nil
-        player.pause(); player.replaceCurrentItem(with: nil)
+        tempoRamp?.cancel(); player.pause(); player.replaceCurrentItem(with: nil)
         loadingTask?.cancel(); loading = false; showLoading = false
         error = nil; playing = true; preparing = true
         track = song; upcoming = next; resolveURL = resolve
+        tempo.originalBPM = originalBPM(for: song)
         position = 0; duration = song.duration
         updateLoading(); loadArtwork(song, ticket: ticket); publishNowPlaying()
         do {
@@ -136,6 +151,7 @@ final class PlaybackController: ObservableObject {
             guard ticket == generation else { return }
             if playing { try activateSession() }
             let item = AVPlayerItem(asset: asset)
+            item.audioTimePitchAlgorithm = .spectral
             statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
                 Task { @MainActor in
                     guard let self, ticket == self.generation else { return }
@@ -143,6 +159,7 @@ final class PlaybackController: ObservableObject {
                         AppLog.shared.record(.playback, .ready, operation: .playback, span: ticket)
                         self.preparing = false
                         if item.duration.seconds.isFinite { self.duration = item.duration.seconds }
+                        self.applyTempo()
                         self.updateLoading()
                     } else if item.status == .failed {
                         AppLog.shared.record(.playback, .failed, level: .error, operation: .playback, span: ticket, error: item.error)
@@ -151,7 +168,7 @@ final class PlaybackController: ObservableObject {
                 }
             }
             player.replaceCurrentItem(with: item)
-            if playing { player.play() }
+            applyTempo()
             updateLoading()
         } catch is CancellationError {
             AppLog.shared.record(.playback, .cancelled, operation: .playback, span: ticket)
@@ -165,6 +182,7 @@ final class PlaybackController: ObservableObject {
     func toggle() { playing ? pause() : resume() }
     func pause() {
         AppLog.shared.record(.playback, .paused, operation: .playback, span: generation)
+        tempoRamp?.cancel()
         playing = false; player.pause(); updateLoading(); publishNowPlaying()
     }
     func resume() {
@@ -173,7 +191,7 @@ final class PlaybackController: ObservableObject {
         playing = true
         do {
             try activateSession()
-            if player.currentItem != nil { player.play() }
+            applyTempo()
             updateLoading(); publishNowPlaying()
         } catch {
             AppLog.shared.record(.playback, .failed, level: .error, operation: .audioSession, error: error)
@@ -187,11 +205,12 @@ final class PlaybackController: ObservableObject {
         audioSessionActive = true
     }
     private func fail(_ message: String) {
+        tempoRamp?.cancel()
         preparing = false; playing = false; error = message
         player.pause(); updateLoading(); publishNowPlaying()
     }
     private func updateLoading() {
-        let busy = playing && error == nil && (preparing || player.timeControlStatus == .waitingToPlayAtSpecifiedRate)
+        let busy = playing && error == nil && tempo.issue == nil && (preparing || player.timeControlStatus == .waitingToPlayAtSpecifiedRate)
         guard loading != busy else { return }
         loading = busy
         loadingTask?.cancel(); loadingTask = nil
@@ -244,14 +263,31 @@ final class PlaybackController: ObservableObject {
         publishNowPlaying()
     }
     func seek(_ time: Double) {
-        player.seek(to: CMTime(seconds: max(0, min(time, duration)), preferredTimescale: 600))
+        guard time.isFinite, duration.isFinite, duration > 0, player.currentItem != nil else { return }
+        let target = max(0, min(time, duration))
+        let ticket = UUID()
+        pendingSeek = ticket
+        position = target
+        publishNowPlaying()
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.pendingSeek == ticket else { return }
+                self.pendingSeek = nil
+                let seconds = self.player.currentTime().seconds
+                if seconds.isFinite { self.position = max(0, seconds) }
+                self.publishNowPlaying()
+            }
+        }
     }
     func stop() {
+        tempoRamp?.cancel()
         generation = UUID(); player.pause(); player.replaceCurrentItem(with: nil)
+        pendingSeek = nil
         loadingTask?.cancel(); artworkTask?.cancel(); cancelPrefetch()
         upcoming = nil; resolveURL = nil; artwork = nil; preparing = false; showLoading = false
         statusObservation = nil; track = nil; playing = false; loading = false
         position = 0; duration = 0; error = nil
+        tempo.enabled = false; tempo.originalBPM = nil; player.defaultRate = 1
         guard systemIntegration else { return }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -264,7 +300,8 @@ final class PlaybackController: ObservableObject {
             MPMediaItemPropertyAlbumTitle: track.album, MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: position,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
-            MPNowPlayingInfoPropertyPlaybackRate: player.timeControlStatus == .playing ? 1.0 : 0.0
+            MPNowPlayingInfoPropertyPlaybackRate: player.timeControlStatus == .playing ? Double(player.rate) : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: Double(tempo.playbackRate ?? 0)
         ]
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
         return info
@@ -272,5 +309,55 @@ final class PlaybackController: ObservableObject {
     private func publishNowPlaying() {
         guard systemIntegration else { return }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+
+    func setTempoEnabled(_ enabled: Bool) {
+        guard tempo.enabled != enabled else { return }
+        if enabled, tempoDefaults.object(forKey: Self.targetKey) == nil, let bpm = tempo.originalBPM {
+            tempo.targetBPM = PlaybackTempo.snappedTarget(bpm)
+        }
+        tempo.enabled = enabled
+        tempoDefaults.set(tempo.targetBPM, forKey: Self.targetKey)
+        applyTempo(smoothly: true)
+    }
+    func setTargetBPM(_ bpm: Double) {
+        let target = PlaybackTempo.snappedTarget(bpm)
+        guard target != tempo.targetBPM || !tempo.enabled else { return }
+        tempo.targetBPM = target
+        tempo.enabled = true
+        tempoDefaults.set(tempo.targetBPM, forKey: Self.targetKey)
+        applyTempo(smoothly: true)
+    }
+    func refreshOriginalBPM() {
+        guard let track else { return }
+        let bpm = originalBPM(for: track)
+        guard bpm != tempo.originalBPM else { return }
+        tempo.originalBPM = bpm
+        applyTempo(smoothly: true)
+    }
+    private func originalBPM(for track: Track) -> Double? {
+        PlaybackTempo.validOriginal(originalBPMForTrack?(track))
+    }
+    private func applyTempo(smoothly: Bool = false) {
+        tempoRamp?.cancel()
+        guard let rate = tempo.playbackRate else {
+            // Keep play intent, but never emit original-speed audio while claiming a fixed BPM.
+            player.pause(); updateLoading(); publishNowPlaying(); return
+        }
+        player.defaultRate = rate
+        guard playing, error == nil, player.currentItem != nil else { publishNowPlaying(); return }
+        let start = player.rate
+        if smoothly, player.timeControlStatus == .playing, start > 0, abs(start - rate) > 0.001 {
+            let ticket = generation
+            tempoRamp = Task { [weak self] in
+                for step in 1...8 {
+                    do { try await Task.sleep(for: .milliseconds(30)) } catch { return }
+                    guard let self, !Task.isCancelled, ticket == self.generation, self.playing else { return }
+                    self.player.rate = start + (rate - start) * Float(step) / 8
+                    self.publishNowPlaying()
+                }
+            }
+        } else { player.play() }
+        updateLoading(); publishNowPlaying()
     }
 }

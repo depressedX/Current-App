@@ -9,11 +9,8 @@ struct LibraryView: View {
     @State private var showFilters = false
     @FocusState private var desktopSearchFocused: Bool
     private var songs: [PoolSong] { pool.songs.filter { $0.state == .completed } }
-    private var genres: [String] {
-        Array(Set(songs.flatMap { Array($0.genres?.filterFamilies ?? []) })).sorted()
-    }
-    private var styles: [String] {
-        Array(Set(songs.flatMap { Array($0.genres?.filterStyles ?? []) })).sorted()
+    private var audioGenres: [GenreChoiceGroup] {
+        GenreChoiceGroup.audio(songs.compactMap(\.genres))
     }
     private var wikiGenres: [String] { Array(Set(songs.flatMap { Array($0.wikiGenreLabels) })).sorted() }
     private var instruments: [String] {
@@ -83,7 +80,26 @@ struct LibraryView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("\(filtered.count) 首歌曲").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                        Button {
+                            store.playLibrary(filtered.map(\.id), account: pool.account)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(CurrentTheme.accent, in: Circle())
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("播放全部").font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary)
+                                    Text("\(filtered.count) 首歌曲").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                                }
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(CurrentPressStyle())
+                            .disabled(filtered.isEmpty)
+                            .opacity(filtered.isEmpty ? 0.45 : 1)
+                            .accessibilityIdentifier("libraryPlayAll")
+                            .accessibilityLabel("播放全部，\(filtered.count) 首歌曲")
+                            .accessibilityHint("替换当前播放列表，从第一首开始播放")
                         Spacer()
                         Button { showFilters = true } label: {
                             Text(filters.count == 0 ? "筛选" : "筛选 · \(filters.count)")
@@ -144,7 +160,7 @@ struct LibraryView: View {
         .navigationTitle("音乐库").navigationBarTitleDisplayMode(.inline)
         .modifier(LibrarySearchCompatibility(text: $search))
         .sheet(isPresented: $showFilters) {
-            LibraryFilterSheet(initial: filters, genres: genres, styles: styles, wikiGenres: wikiGenres, instruments: instruments,
+            LibraryFilterSheet(initial: filters, audioGenres: audioGenres, wikiGenres: wikiGenres, instruments: instruments,
                                resultCount: { matching($0).count }) { filters = $0 }
         }
         .onChange(of: pool.account) { _, _ in
@@ -216,31 +232,27 @@ private struct LibraryFilters {
 private struct LibraryFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: LibraryFilters
-    let genres: [String]
-    let styles: [String]
+    let audioGenres: [GenreChoiceGroup]
     let wikiGenres: [String]
     let instruments: [String]
     let resultCount: (LibraryFilters) -> Int
     let apply: (LibraryFilters) -> Void
-    init(initial: LibraryFilters, genres: [String], styles: [String], wikiGenres: [String], instruments: [String],
+    init(initial: LibraryFilters, audioGenres: [GenreChoiceGroup], wikiGenres: [String], instruments: [String],
          resultCount: @escaping (LibraryFilters) -> Int, apply: @escaping (LibraryFilters) -> Void) {
         _draft = State(initialValue: initial)
-        self.genres = genres; self.styles = styles; self.wikiGenres = wikiGenres; self.instruments = instruments
+        self.audioGenres = audioGenres; self.wikiGenres = wikiGenres; self.instruments = instruments
         self.resultCount = resultCount; self.apply = apply
     }
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    choices(genres, selection: $draft.genres)
-                } header: { Text("音频风格大类") }
+                    GenreHierarchyChoices(namespace: "libraryAudio", groups: audioGenres, selection: $draft.genres)
+                } header: { Text("音频曲风") } footer: { Text("展开大类选择子风格；House 包含证据足够的 House 子风格。") }
                 Section {
-                    choices(styles, selection: $draft.genres)
-                } header: { Text("音频具体风格") } footer: { Text("House 包含证据足够的 House 子风格。") }
-                Section {
-                    choices(wikiGenres, selection: $draft.wikiGenres)
+                    GenreHierarchyChoices(namespace: "libraryWiki", groups: GenreChoiceGroup.encyclopedia(Set(wikiGenres)), selection: $draft.wikiGenres)
                 } header: { Text("百科曲风") } footer: {
-                    Text("保留网易云原始标签，准确性未验证。音频曲风或百科曲风任一命中即可；与乐器、节奏同时满足。")
+                    Text("选择大类包含全部子类，也可展开细选。音频或百科任一命中即可，再同时满足乐器与节奏条件。百科标签准确性未验证。")
                 }
                 Section("乐器") { choices(instruments, selection: $draft.instruments) }
                 Section {
@@ -295,6 +307,62 @@ private struct LibraryFilterSheet: View {
                 }.padding(.vertical, 4)
             }
         }
+    }
+}
+
+/// Display the library genre families with their corresponding styles.
+struct GenreHierarchyChoices: View {
+    var namespace = "genre"
+    let groups: [GenreChoiceGroup]
+    @Binding var selection: Set<String>
+    var body: some View {
+        if groups.isEmpty {
+            Text("暂无可用曲风").foregroundStyle(CurrentTheme.muted)
+        }
+        ForEach(groups) { group in
+            if group.children.isEmpty {
+                choice(group.title, id: group.id, group: group)
+            } else {
+                DisclosureGroup {
+                    choice("全部子类", id: group.id, group: group)
+                    ForEach(group.children) { option in
+                        choice(option.title, id: option.id, group: group)
+                    }
+                } label: {
+                    HStack {
+                        Text(group.title)
+                        Spacer()
+                        if selection.contains(group.id) {
+                            Text("全部").foregroundStyle(CurrentTheme.accent)
+                        } else {
+                            let count = group.children.filter { selection.contains($0.id) }.count
+                            if count > 0 { Text("已选 \(count)").foregroundStyle(CurrentTheme.accent) }
+                        }
+                    }.frame(minHeight: 44)
+                }.accessibilityIdentifier("\(namespace):family:\(group.id)")
+            }
+        }
+    }
+    private func choice(_ title: String, id: String, group: GenreChoiceGroup) -> some View {
+        let selected = selection.contains(id)
+        return Button {
+            if selected { selection.remove(id) }
+            else {
+                if id == group.id { selection.subtract(group.children.map(\.id)) }
+                else { selection.remove(group.id) }
+                selection.insert(id)
+            }
+        } label: {
+            HStack {
+                Text(title).foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? CurrentTheme.accent : CurrentTheme.muted)
+            }.frame(minHeight: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .accessibilityIdentifier("\(namespace):option:\(id)")
+            .accessibilityLabel("\(group.title)，\(title)")
+            .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 
@@ -379,7 +447,7 @@ struct ProfileView: View {
                     HStack {
                         Text("AI 设置").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
                         Spacer()
-                        Text(store.openRouterConfigured ? "已配置" : "填写个人 Key").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                        Text(store.deepSeekConfigured ? "已配置" : "填写个人 Key").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                         Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
                     }
                 }.accessibilityIdentifier("openAISettings")
@@ -419,7 +487,7 @@ struct AboutView: View {
                 Text("Current").font(CurrentTheme.TypeScale.title)
                 Text("0.1.0 · 交互预览").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             }
-            aboutSection("选歌", "通过个人 OpenRouter Key 理解听歌需求，再按 BPM 条件和歌曲池听感排序。一次加入全部匹配歌曲；听完后可手动再听一遍。")
+            aboutSection("选歌", "通过个人 DeepSeek Key 理解听歌需求，再按 BPM 条件和歌曲池听感排序。一次加入全部匹配歌曲；听完后可手动再听一遍。")
             aboutSection("推荐偏好", "喜欢和不合适仅用于 Current 的推荐偏好，永不同步网易云收藏。当前只记录反馈，待接入推荐排序后生效。")
             aboutSection("演示音频", "8 首原创合成片段，用于体验播放操作。")
             aboutSection("CarPlay", "先在 iPhone 准备歌单。真机使用需要 Apple 音频授权。")

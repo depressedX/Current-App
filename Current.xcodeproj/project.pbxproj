@@ -136,6 +136,11 @@
 		E092FCAC935B867D84D85E25 /* SRP in Frameworks */ = {isa = PBXBuildFile; productRef = AAEE6D6690FB597652CBC3FF /* SRP */; };
 		6BAEB27BA5D46EC9E685CFC6 /* SRP in Frameworks */ = {isa = PBXBuildFile; productRef = 76AD98092AF4A5E71C1C67C3 /* SRP */; };
 		BD153CBE841770D2B7D1D833 /* SRP in Frameworks */ = {isa = PBXBuildFile; productRef = F396329A3269D9F2D41DF455 /* SRP */; };
+		2BCEDF7990409B65A6999795 /* PlaybackTempoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE53043317CD278BD5B22FF3 /* PlaybackTempoTests.swift */; };
+		62228F55E415D1BAFBE78319 /* PlaybackTempo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 099D48E9D047A14A760DBCD1 /* PlaybackTempo.swift */; };
+		C7B7A3928DC5D771E2716E99 /* PlaybackTempoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37121F016C2E7BC453C52A49 /* PlaybackTempoView.swift */; };
+		E8E8EB3F5A40BD6F12F63741 /* PlaybackTempo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 099D48E9D047A14A760DBCD1 /* PlaybackTempo.swift */; };
+		F82379CB456329DC54D108A6 /* PlaybackTempoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37121F016C2E7BC453C52A49 /* PlaybackTempoView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -214,6 +219,9 @@
 		AE459E0696E24F8F5393BC29 /* CompanionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionClient.swift; sourceTree = "<group>"; };
 		B58F4F56858FEFF0CEA848D4 /* CompanionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionView.swift; sourceTree = "<group>"; };
 		F066EDC7D553D9B37AF31055 /* CompanionConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionConnection.swift; sourceTree = "<group>"; };
+		099D48E9D047A14A760DBCD1 /* PlaybackTempo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackTempo.swift; sourceTree = "<group>"; };
+		37121F016C2E7BC453C52A49 /* PlaybackTempoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackTempoView.swift; sourceTree = "<group>"; };
+		DE53043317CD278BD5B22FF3 /* PlaybackTempoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackTempoTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -291,6 +299,7 @@
 			children = (
 				E024E2F0C7142854C04233F4 /* CurrentTests.swift */,
 				A5A6DA328F549A4D81714983 /* PlaybackArtworkTests.swift */,
+				DE53043317CD278BD5B22FF3 /* PlaybackTempoTests.swift */,
 			);
 			path = CurrentTests;
 			sourceTree = "<group>";
@@ -318,6 +327,7 @@
 				319E3CA687BCBBC52EDFBB7D /* OpenRouterClient.swift */,
 				9FF70D8D31F524866D1DDC0C /* RecommendationQuery.swift */,
 				D1BEC6F301D2580625131E81 /* ArtworkCache.swift */,
+				099D48E9D047A14A760DBCD1 /* PlaybackTempo.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -375,6 +385,7 @@
 				1FF7CF84794F5392CBAA8EF4 /* SongPoolView.swift */,
 				D0BB0D437025A4B46CBAFDB1 /* AISettingsView.swift */,
 				B58F4F56858FEFF0CEA848D4 /* CompanionView.swift */,
+				37121F016C2E7BC453C52A49 /* PlaybackTempoView.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -690,6 +701,8 @@
 				A427FD3B7D08A45C9C53656E /* CompanionConnection.swift in Sources */,
 				8239F2E4CCE9758F94DC743E /* CompanionProtocol.swift in Sources */,
 				3B6214B18C3133B815E07EA6 /* CompanionView.swift in Sources */,
+				E8E8EB3F5A40BD6F12F63741 /* PlaybackTempo.swift in Sources */,
+				C7B7A3928DC5D771E2716E99 /* PlaybackTempoView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -734,6 +747,8 @@
 				E7802504C6C3FEA4C5398A4D /* CompanionConnection.swift in Sources */,
 				4E896250B41DB034925499F2 /* CompanionProtocol.swift in Sources */,
 				3A7828557B58052FE289E4AE /* CompanionView.swift in Sources */,
+				62228F55E415D1BAFBE78319 /* PlaybackTempo.swift in Sources */,
+				F82379CB456329DC54D108A6 /* PlaybackTempoView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -743,6 +758,7 @@
 			files = (
 				8F4BFF70ACD553B8830C9A08 /* CurrentTests.swift in Sources */,
 				7048346F2D88B4FFD1489687 /* PlaybackArtworkTests.swift in Sources */,
+				2BCEDF7990409B65A6999795 /* PlaybackTempoTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

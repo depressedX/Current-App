@@ -10,7 +10,7 @@ enum LogEvent: String, Codable {
 enum LogOperation: String, Codable {
     case companionNearbySearch, companionDiscovery, companionDiscoveryVisible, companionPairingListener, companionListener, companionConnection
     case companionRequest, companionApproval, companionVerification, companionPrompt
-    case openRouterRequest, recommendationQueue
+    case openRouterRequest, deepSeekRequest, recommendationQueue
     case lyricsFetch, lyricsIndex, lyricsSearch
     case genreAnalysis
     case semanticAudio, semanticDecode, semanticLoad, semanticSave
@@ -40,6 +40,8 @@ enum LogLevel: String, Codable { case info, warning, error }
 enum LogScope { @TaskLocal static var trace: UUID? }
 
 enum LogFailure: String, Codable {
+    case intentMissingKey, intentKeychain, intentUnavailable, intentInvalidQuery, intentUnsupported
+    case intentRejected, intentRateLimited, intentNetwork, intentService, intentMissingBPM, intentMissingGenre, intentMissingConcept, intentIncomplete
     case openRouterMissingKey, openRouterKeychain, openRouterUnavailable, openRouterInvalidQuery, openRouterUnsupported
     case openRouterRejected, openRouterRateLimited, openRouterNetwork, openRouterService, openRouterMissingBPM, openRouterMissingGenre, openRouterMissingConcept, openRouterIncomplete
     case lyricsModel, lyricsVersion, lyricsVector, lyricsInference, lyricsStorage

@@ -135,8 +135,10 @@ final class SongPoolStore: ObservableObject {
                 }
             }
             for label in song.wikiGenreLabels {
-                let reference = GenreReference(source: .encyclopedia, value: label)
-                references[reference.id] = reference.concept
+                for reference in [GenreReference(source: .encyclopedia, value: label),
+                                  GenreReference(source: .encyclopediaFamily, value: WikiGenre(label).family)] {
+                    references[reference.id] = reference.concept
+                }
             }
         }
         return listening + references.values.sorted { $0.id < $1.id }
