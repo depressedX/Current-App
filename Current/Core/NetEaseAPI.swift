@@ -152,14 +152,21 @@ final class NetEaseAPI {
     func playbackURL(id: Int) async throws -> URL {
         let body = try await request("/song/enhance/player/url/v1", ["ids": "[\(id)]", "level": "standard", "encodeType": "aac"], eapi: true)
         guard let song = (body["data"] as? [[String: Any]])?.first else { throw CurrentError.message("暂无播放资源。") }
+        if (song["code"] as? Int) == 404 { throw CurrentError.unavailable(.noResource) }
+        // A service error is not evidence that this particular song is unavailable.
+        if let code = song["code"] as? Int, code != 200 {
+            if code == 301 { throw CurrentError.expired }
+            throw CurrentError.message("音源服务返回错误（\(code)），请稍后重试。")
+        }
         guard song["freeTrialInfo"] == nil || song["freeTrialInfo"] is NSNull else {
-            throw CurrentError.message("这首歌仅提供试听，请在网易云确认账号播放权限。")
+            throw CurrentError.unavailable(.trialOnly)
         }
-        guard let text = song["url"] as? String, var parts = URLComponents(string: text) else {
-            throw CurrentError.message("这首歌暂不可播放，可以换一首。")
+        guard let text = song["url"] as? String, !text.isEmpty else {
+            throw CurrentError.unavailable(.noResource)
         }
+        guard var parts = URLComponents(string: text) else { throw CurrentError.message("播放地址无效，请稍后重试。") }
         if parts.scheme == "http" { parts.scheme = "https" }
-        guard let url = parts.url, url.scheme == "https" else { throw CurrentError.message("播放地址无效。") }
+        guard let url = parts.url, url.scheme == "https", url.host != nil else { throw CurrentError.message("播放地址无效。") }
         return url
     }
     func request(_ path: String, _ payload: [String: Any] = [:], eapi: Bool = false,

@@ -17,7 +17,7 @@ struct AcousticFeatures: Codable, Equatable {
 }
 
 enum AnalysisState: String, Codable {
-    case queued, readingMetadata, readingLyrics, fetching, analyzing, completed, failed
+    case queued, readingMetadata, readingLyrics, fetching, analyzing, completed, failed, unavailable
     var title: String {
         switch self {
         case .queued: return "等待分析"
@@ -27,6 +27,7 @@ enum AnalysisState: String, Codable {
         case .analyzing: return "分析听感中"
         case .completed: return "分析完成"
         case .failed: return "分析失败"
+        case .unavailable: return "音源不可用"
         }
     }
     var active: Bool { self == .readingMetadata || self == .readingLyrics || self == .fetching || self == .analyzing }
@@ -79,6 +80,7 @@ struct PoolSong: Identifiable, Codable {
     }
     var canBackfillBPM: Bool { state == .completed && !track.isDemo && wikiBPM == nil }
     var failure: String?
+    var unavailability: TrackUnavailability?
     let addedAt: Date
     var finishedAt: Date?
     /// Eligibility depends on the query: basic measurements never satisfy semantic requests.

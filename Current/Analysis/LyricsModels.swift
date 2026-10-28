@@ -86,8 +86,8 @@ enum LyricsError: Error, LocalizedError, SafeLogError {
     var errorDescription: String? {
         switch self {
         case .model: return "歌词模型缺失或损坏，请重新安装 App"
-        case .incompatible: return "歌词索引版本不兼容，请更新歌词索引"
-        case .invalidVector: return "歌词向量无效，请更新歌词索引"
+        case .incompatible: return "歌词数据版本不兼容，请更新歌词"
+        case .invalidVector: return "歌词数据无效，请更新歌词"
         case .inference: return "歌词分析失败，请重试"
         case .storage: return "歌词索引无法读取或保存，请重试"
         case .tooLong: return "文本过长，请缩短后重试"

@@ -88,14 +88,30 @@ struct HostCoreChecks {
         print("PASS login expiration is distinguished from other errors")
         MockHTTP.response = ["code": 200, "data": [["url": "http://example.com/audio.mp3", "freeTrialInfo": ["start": 0, "end": 30]]]]
         do { _ = try await api.playbackURL(id: 42); fatalError("trial must be rejected") }
-        catch CurrentError.message(let reason) { precondition(reason.contains("试听")) }
+        catch CurrentError.unavailable(.trialOnly) {}
         MockHTTP.response = ["code": 200, "data": [["url": "http://example.com/audio.mp3", "freeTrialInfo": NSNull()]]]
         let url = try await api.playbackURL(id: 42)
         precondition(url.scheme == "https")
         MockHTTP.response = ["code": 200, "data": [["url": NSNull()]]]
         do { _ = try await api.playbackURL(id: 42); fatalError("missing URL must fail") }
-        catch CurrentError.message {}
+        catch CurrentError.unavailable(.noResource) {}
         print("PASS trial-only/missing audio is rejected; valid HTTP audio is upgraded to HTTPS")
+        MockHTTP.response = ["code": 200, "data": [["code": 404, "url": NSNull()]]]
+        do { _ = try await api.playbackURL(id: 42); fatalError("song-level 404 must be unavailable") }
+        catch CurrentError.unavailable(.noResource) {}
+        MockHTTP.response = ["code": 200, "data": [["code": 500, "url": NSNull()]]]
+        do { _ = try await api.playbackURL(id: 42); fatalError("song-level service error must fail") }
+        catch CurrentError.message {}
+        MockHTTP.response = ["code": 200, "data": []]
+        do { _ = try await api.playbackURL(id: 42); fatalError("malformed response must remain retryable") }
+        catch CurrentError.message {}
+        MockHTTP.response = ["code": 200, "data": [["url": "https://["]]]
+        do { _ = try await api.playbackURL(id: 42); fatalError("invalid URL must remain retryable") }
+        catch CurrentError.message {}
+        MockHTTP.response = ["code": 404]
+        do { _ = try await api.playbackURL(id: 42); fatalError("endpoint 404 must remain retryable") }
+        catch CurrentError.message {}
+        print("PASS unavailable songs and trial restrictions are distinct from malformed/service/endpoint errors")
         func wiki(_ text: String, kind: String = "bpm", title: String = "BPM") -> [String: Any] {
             ["code": 200, "data": ["blocks": [["creatives": [["creativeType": kind,
                 "uiElement": ["mainTitle": ["title": title], "textLinks": [["text": text]]]]]]]]]

@@ -117,6 +117,65 @@ final class CompanionProfileHTTP: URLProtocol {
         precondition(restoredRank.map(\.id) == [42])
         print("PASS durable catalogue and vectors survive restart")
     }
+    @MainActor static func unavailableSongs(_ root: URL) async throws {
+        struct Archive: Codable { let jobs: [CompanionJob]; let analysisPaused: Bool; let syncPaused: Bool }
+        let tracks = (70...71).map { Track(id: $0, title: "Unavailable fixture", artist: "Fixture", album: "", artwork: nil, duration: 24, demoIndex: nil) }
+        let entries = tracks.map { CompanionJob(id: UUID(), track: $0, account: "netease:1", requestID: UUID()) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try JSONEncoder().encode(Archive(jobs: entries, analysisPaused: false, syncPaused: false)).write(to: root.appendingPathComponent("tasks.json"))
+        let vault = MemoryCompanionVault()
+        try vault.save(CompanionAuthorization(account: "netease:1", cookies: ["MUSIC_U": "fixture"]), key: "mac-auth")
+        var attempted: [Int] = []
+        let worker = CompanionWorker(folder: root, startNetwork: false, vault: vault, processor: { job, _ in
+            attempted.append(job.track.id)
+            if job.track.id == 70 { throw CurrentError.unavailable(.noResource) }
+            throw URLError(.timedOut)
+        })
+        try await wait { worker.runningCount == 0 && worker.jobs.allSatisfy { $0.state == .unavailable || $0.state == .failed } }
+        precondition(worker.unavailableCount == 1 && worker.pendingCount == 0)
+        worker.retryFailed()
+        try await wait { worker.runningCount == 0 }
+        precondition(attempted.filter { $0 == 70 }.count == 1 && attempted.filter { $0 == 71 }.count == 2)
+        worker.shutdown()
+        let restored = CompanionWorker(folder: root, startNetwork: false, restoreSecrets: false)
+        precondition(restored.unavailableCount == 1 && restored.jobs[0].unavailability == .noResource)
+        restored.shutdown()
+
+        let phone = SongPoolStore(fileURL: root.appendingPathComponent("phone.json"), resolve: { _ in root })
+        try await wait { !phone.loading }; phone.activate(account: "netease:1")
+        phone.enqueue(tracks, source: "fixture")
+        let song = phone.songs[0], request = UUID()
+        phone.reserveCompanion([song.id], requests: [song.id: request])
+        var status = CompanionJobStatus(id: song.id, track: song.track, state: .unavailable, failure: nil,
+            requestID: UUID(), unavailability: .noResource)
+        phone.importCompanionStatuses([status], account: "netease:1")
+        precondition(phone.pendingCount == 2) // Superseded request cannot change the phone.
+        status.requestID = request
+        phone.importCompanionStatuses([status], account: "netease:2")
+        precondition(phone.pendingCount == 2)
+        phone.importCompanionStatuses([status], account: "netease:1")
+        precondition(phone.unavailableCount == 1 && phone.pendingCount == 1 && phone.songs[0].remotePending != true)
+        phone.retryFailed(); phone.resume()
+        precondition(phone.songs[0].state == .unavailable)
+        let retrySong = phone.songs[1], retryRequest = UUID()
+        phone.reserveCompanion([retrySong.id], requests: [retrySong.id: retryRequest])
+        var retryStatus = CompanionJobStatus(id: retrySong.id, track: retrySong.track, state: .failed,
+            failure: "网络超时", requestID: retryRequest)
+        phone.importCompanionStatuses([retryStatus], account: "netease:1")
+        precondition(phone.pendingCount == 0 && phone.songs[1].remotePending != true)
+        retryStatus = CompanionJobStatus(id: retrySong.id, track: retrySong.track, state: .fetching,
+            failure: nil, requestID: retryRequest)
+        phone.importCompanionStatuses([retryStatus], account: "netease:1")
+        precondition(phone.pendingCount == 1 && phone.songs[1].remotePending == true)
+        // A delayed successful result must not resurrect a terminal unavailable song.
+        var stale = result(song.id, trackID: song.track.id); stale.requestID = request
+        try await phone.importCompanion(stale)
+        precondition(phone.songs[0].state == .unavailable)
+        let wire = try JSONDecoder().decode(CompanionJobStatus.self, from: JSONEncoder().encode(status))
+        precondition(wire.requestID == request && wire.unavailability == .noResource)
+        print("PASS Mac unavailable/retryable separation, restart, terminal status wire sync and account/request fencing")
+    }
+
     @MainActor static func recovery(_ root: URL) throws {
         let track = Track(id: 1, title: "Fixture", artist: "", album: "", artwork: nil, duration: 24, demoIndex: nil)
         struct Archive: Codable { let jobs: [CompanionJob]; let analysisPaused: Bool; let syncPaused: Bool }
@@ -572,6 +631,7 @@ final class CompanionProfileHTTP: URLProtocol {
         setbuf(stdout, nil)
         try await imports(root.appendingPathComponent("phone"), resources: URL(fileURLWithPath: CommandLine.arguments[1]))
         try recovery(root.appendingPathComponent("mac"))
+        try await unavailableSongs(root.appendingPathComponent("unavailable"))
         try syncedMigration(root.appendingPathComponent("synced-migration"))
         try await peerDiscoveryLifecycle()
         discoveryRecords()

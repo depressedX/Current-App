@@ -60,12 +60,15 @@ enum CurrentTheme {
 }
 
 struct CurrentPage<Content: View>: View {
+    var insets = EdgeInsets(top: CurrentTheme.Space.page, leading: CurrentTheme.Space.page,
+                            bottom: CurrentTheme.Space.page, trailing: CurrentTheme.Space.page)
+    var spacing: CGFloat = CurrentTheme.Space.page
     @ViewBuilder let content: () -> Content
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: CurrentTheme.Space.page, content: content)
+            VStack(alignment: .leading, spacing: spacing, content: content)
                 .frame(maxWidth: CurrentTheme.Layout.readableWidth, alignment: .leading)
-                .padding(CurrentTheme.Space.page)
+                .padding(insets)
                 .frame(maxWidth: .infinity, alignment: .top)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -169,6 +172,19 @@ struct CurrentRowStyle: ButtonStyle {
 
 extension Double {
     var clock: String { guard isFinite else { return "0:00" }; return "\(Int(max(0, self)) / 60):\(String(format: "%02d", Int(max(0, self)) % 60))" }
+}
+
+extension Date {
+    /// The interface ships in Chinese only, so dates must not follow an English device locale.
+    private static let uiLocale = Locale(identifier: "zh_Hans_CN")
+
+    var relativeDescription: String {
+        formatted(Date.RelativeFormatStyle(presentation: .named, locale: Self.uiLocale))
+    }
+
+    var shortDescription: String {
+        formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: Self.uiLocale))
+    }
 }
 
 /// Two explicit, equally reachable preference actions; never a streaming-service favorite.

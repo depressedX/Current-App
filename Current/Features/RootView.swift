@@ -48,6 +48,7 @@ struct RootView: View {
         }
         .onChange(of: store.player.playing || store.player.loading) { _, value in store.pool.setPlaybackBusy(value) }
         .toolbarBackground(CurrentTheme.background, for: .tabBar)
+        .preferredColorScheme(.dark)
         .animation(reduceMotion ? nil : CurrentTheme.Motion.change, value: store.currentTrack != nil)
         .sheet(isPresented: $showLogin) { LoginView().environmentObject(store) }
         .modifier(PlayerPresentation(isPresented: $showPlayer, namespace: playerTransition))
@@ -215,31 +216,46 @@ struct ListenView: View {
     private var empty: Bool { prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var body: some View {
         ScrollViewReader { scroll in
-            CurrentPage {
-                VStack(alignment: .leading, spacing: CurrentTheme.Space.small) {
+            CurrentPage(insets: EdgeInsets(top: 18, leading: 32, bottom: 32, trailing: 32), spacing: 18) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Image("WaveHero")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(.horizontal, -32)
+                        .accessibilityHidden(true)
                     Text("此刻想听什么？").font(CurrentTheme.TypeScale.title)
+                        .padding(.top, 14)
                     Text("写下心情、风格，或一个场景。")
                         .font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
-                }.padding(.top, CurrentTheme.Space.small)
-                    .contentShape(Rectangle()).onTapGesture { composing = false }
-                VStack(alignment: .leading, spacing: CurrentTheme.Space.group) {
+                        .padding(.top, 14)
+                }
+                .contentShape(Rectangle()).onTapGesture { composing = false }
+                VStack(alignment: .leading, spacing: 0) {
                     TextField("比如，阴郁的摇滚，别太激烈", text: $prompt, axis: .vertical)
                         .font(CurrentTheme.TypeScale.body).lineSpacing(4).lineLimit(3...5)
                         .focused($composing).accessibilityIdentifier("promptInput")
                         .submitLabel(.done)
                         .onSubmit { composing = false }
-                    PrimaryButton(title: store.generating ? "正在准备歌单…" : store.generatedPlaylist == nil ? "生成歌单" : "重新生成", busy: store.generating) {
+                        .frame(minHeight: 64, alignment: .topLeading)
+                    ComposerButton(title: store.generating ? "正在准备歌单…" : store.generatedPlaylist == nil ? "生成歌单" : "重新生成",
+                                   busy: store.generating) {
                         composing = false
                         if store.listener == nil && !store.demoMode { showLogin = true }
                         else { store.generate(prompt: prompt) }
-                    }.disabled(empty).accessibilityIdentifier("generateQueue")
+                    }
+                    .disabled(empty)
+                    .accessibilityIdentifier("generateQueue")
                     if store.generating {
                         Button("取消生成") { store.cancelGeneration() }
-                            .frame(maxWidth: .infinity).accessibilityIdentifier("cancelGeneration")
+                            .font(CurrentTheme.TypeScale.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 12)
+                            .accessibilityIdentifier("cancelGeneration")
                     }
                 }
-                .padding(CurrentTheme.Space.group)
-                .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
+                .padding(EdgeInsets(top: 20, leading: 14, bottom: 14, trailing: 14))
+                .background(Color(white: 0.094), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.06), lineWidth: 1))
                 if store.listener == nil && !store.demoMode {
                     HStack {
                         Button("连接网易云") { showLogin = true }
@@ -270,6 +286,12 @@ struct ListenView: View {
                     Divider().padding(.vertical, CurrentTheme.Space.small)
                     QueueSection(showPlayer: $showPlayer)
                 }
+                // Sessions are scoped to the account; a signed-out guest cannot replay them.
+                if (store.demoMode || store.listener != nil) &&
+                    store.generatedPlaylist == nil && store.queue.isEmpty && !store.visibleSessions.isEmpty {
+                    Divider().padding(.vertical, CurrentTheme.Space.small)
+                    RecentSessionsSection()
+                }
             }
             .onChange(of: store.generatedPlaylist?.id) { _, id in
                 guard let id else { return }
@@ -287,6 +309,44 @@ struct ListenView: View {
         .onAppear {
             if prompt.isEmpty, let playlist = store.generatedPlaylist { prompt = playlist.prompt }
         }
+    }
+}
+
+/// The composer action: a deep red capsule with a trailing arrow, matching the reference layout.
+private struct ComposerButton: View {
+    let title: String
+    var busy = false
+    let action: () -> Void
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(LinearGradient(colors: [Color(red: 0.44, green: 0.11, blue: 0.14),
+                                                  Color(red: 0.29, green: 0.06, blue: 0.08)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                Capsule(style: .continuous)
+                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                Text(title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.white)
+                HStack {
+                    Spacer()
+                    ZStack {
+                        Circle().fill(.white.opacity(0.10))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                    .frame(width: 34, height: 34)
+                    .padding(.trailing, 6)
+                }
+            }
+            .frame(height: 46)
+            .shadow(color: CurrentTheme.accent.opacity(enabled && !busy ? 0.35 : 0), radius: 14, y: 2)
+        }
+        .buttonStyle(CurrentPressStyle())
+        .opacity(enabled && !busy ? 1 : 0.55)
+        .disabled(busy)
     }
 }
 
@@ -390,5 +450,84 @@ struct TrackRow: View {
             .background(active ? CurrentTheme.surface : .clear, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.standard))
             .contentShape(Rectangle())
         }.buttonStyle(CurrentRowStyle())
+    }
+}
+
+/// Only meaningful when the page has nothing loaded: the newest session is already on screen otherwise.
+private struct RecentSessionsSection: View {
+    @EnvironmentObject private var store: AppStore
+    private var sessions: [ListeningSession] { Array(store.visibleSessions.prefix(3)) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Rectangle().fill(.white.opacity(0.08)).frame(height: 0.5)
+            HStack(alignment: .firstTextBaseline) {
+                Text("最近听过").font(.system(size: 17, weight: .semibold))
+                Spacer()
+                if store.visibleSessions.count > sessions.count {
+                    NavigationLink { ListeningHistoryView() } label: {
+                        HStack(spacing: 2) {
+                            Text("全部")
+                            Image(systemName: "chevron.right").font(.caption2)
+                        }.font(.subheadline).foregroundStyle(CurrentTheme.muted)
+                    }.accessibilityIdentifier("openListeningHistory")
+                }
+            }
+            .padding(.top, 6)
+            VStack(spacing: 12) {
+                ForEach(sessions) { session in
+                    SessionRow(session: session) { store.replay(session) }
+                }
+            }
+        }
+    }
+}
+
+struct ListeningHistoryView: View {
+    @EnvironmentObject private var store: AppStore
+    var body: some View {
+        CurrentPage {
+            if store.visibleSessions.isEmpty {
+                ContentUnavailableView("还没有听歌记录", systemImage: "clock",
+                                       description: Text("生成歌单后，听过的需求会保存在这里。"))
+            } else {
+                VStack(spacing: CurrentTheme.Space.tiny) {
+                    ForEach(store.visibleSessions) { session in
+                        SessionRow(session: session) { store.replay(session) }
+                    }
+                }
+            }
+        }
+        .navigationTitle("最近听过").navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct SessionRow: View {
+    let session: ListeningSession
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                if let track = session.tracks.first {
+                    Artwork(track: track).frame(width: 56, height: 56)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.prompt).font(.system(size: 17, weight: .semibold)).lineLimit(2)
+                    Text("\(session.tracks.count) 首 · \(session.createdAt.relativeDescription)")
+                        .font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
+                }
+                Spacer(minLength: 8)
+                ZStack {
+                    Circle().fill(.white.opacity(0.08))
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+                .frame(width: 44, height: 44)
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }.buttonStyle(CurrentRowStyle())
+        .accessibilityLabel("\(session.prompt)，\(session.tracks.count) 首")
+        .accessibilityHint("替换当前歌单并开始播放")
     }
 }

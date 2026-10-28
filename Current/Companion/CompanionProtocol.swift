@@ -8,7 +8,7 @@ enum CompanionProtocol {
     static let service = "_current-an._tcp"
     // Separate instances of the same declared service type, rather than a second Bonjour permission.
     static func pairingName(_ serviceID: String) -> String { String(serviceID.prefix(57)) + "-pair" }
-    static let version = 1
+    static let version = 2
     static let signature = "\(SemanticSpace.id)|\(SemanticSpace.catalogVersion)|\(GenreAnalysis.currentVersion)|\(LyricsSpace.id)|\(LyricsSpace.preprocessing)|\(ObjectiveProfile.currentVersion)"
     static let maxFrame = 16 * 1024 * 1024
 }
@@ -48,7 +48,7 @@ struct CompanionResult: Codable {
     }
 }
 enum CompanionJobState: String, Codable {
-    case queued, fetching, analyzing, completed, synced, failed, authorizationRequired
+    case queued, fetching, analyzing, completed, synced, failed, authorizationRequired, unavailable
     var title: String {
         switch self {
         case .queued: return "等待分析"
@@ -57,6 +57,7 @@ enum CompanionJobState: String, Codable {
         case .completed: return "等待同步"
         case .synced: return "已同步"
         case .failed: return "分析失败"
+        case .unavailable: return "音源不可用"
         case .authorizationRequired: return "等待更新授权"
         }
     }
@@ -68,6 +69,7 @@ struct CompanionJob: Codable, Identifiable {
     var requestID: UUID? = nil
     var state: CompanionJobState = .queued
     var failure: String?
+    var unavailability: TrackUnavailability?
     var result: CompanionResult?
 }
 struct CompanionJobStatus: Codable, Identifiable {
@@ -75,6 +77,8 @@ struct CompanionJobStatus: Codable, Identifiable {
     let track: Track
     let state: CompanionJobState
     let failure: String?
+    var requestID: UUID? = nil
+    var unavailability: TrackUnavailability? = nil
 }
 struct CompanionMessage: Codable {
     enum Kind: String, Codable { case pairRequest, pairWaiting, pairAccepted, pairCancel, pairStart, pairChallenge, pairProof, pairComplete, hello, welcome, unpair, goodbye, authorize, session, submit, status, result, acknowledge, control, cancel, revoke, error, poll }

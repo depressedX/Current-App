@@ -15,7 +15,7 @@ final class CompanionClient: ObservableObject {
     @Published private(set) var computers: [Computer] = []
     @Published private(set) var connected = false
     @Published private(set) var connecting = false
-    @Published private(set) var name = "Mac 分析伴侣"
+    @Published private(set) var name = "Mac"
     @Published private(set) var error: String?
     @Published private(set) var statuses: [CompanionJobStatus] = []
     @Published private(set) var analysisPaused = false
@@ -239,7 +239,7 @@ final class CompanionClient: ObservableObject {
         }
         value.onFailure = { [weak self] issue in
             self?.error = CompanionConnection.pairingFailureMessage(for: issue)
-                ?? "已发现 Mac，但连接未完成。请确认 Mac 分析伴侣已打开且未暂停；如果持续失败，可在“更多”中重新配对。"
+                ?? "已发现 Mac，但连接未完成。请确认 Current 分析伴侣已打开且未暂停；如果持续失败，可在“更多”中重新配对。"
         }
         value.onMessage = { [weak self] message in self?.receive(message) }
         value.onClose = { [weak self] in
@@ -258,7 +258,7 @@ final class CompanionClient: ObservableObject {
     private func receive(_ message: CompanionMessage) {
         switch message.kind {
         case .welcome:
-            guard message.signature == CompanionProtocol.signature else { error = "两端分析版本不兼容，请更新 App"; connection?.close(); return }
+            guard message.version == CompanionProtocol.version, message.signature == CompanionProtocol.signature else { error = "两端分析版本不兼容，请更新 App"; connection?.close(); return }
             if let candidate {
                 do { try vault.save(candidate, key: "phone-pair"); pair = candidate; self.candidate = nil }
                 catch { self.error = "无法保存配对，请检查钥匙串权限"; connection?.close(); return }
@@ -276,8 +276,9 @@ final class CompanionClient: ObservableObject {
             }
         case .goodbye: forgetPairing()
         case .status:
-            guard message.signature == CompanionProtocol.signature else { error = "两端版本不兼容"; return }
+            guard message.version == CompanionProtocol.version, message.signature == CompanionProtocol.signature else { error = "两端版本不兼容"; return }
             statuses = (message.statuses ?? []).filter { $0.state != .synced }; analysisPaused = message.analysisPaused ?? false; syncPaused = message.syncPaused ?? false
+            pool?.importCompanionStatuses(statuses, account: message.account)
             authorized = message.account == pool?.account && message.authorizationAvailable == true && api?.hasCredentials == true
         case .result:
             guard !syncPaused, let result = message.result else { return }
@@ -308,7 +309,7 @@ final class CompanionClient: ObservableObject {
     }
     func submit(_ ids: Set<UUID>, force: Bool = false) {
         guard connected, authorized, let pool else { error = "请先连接 Mac 并更新授权"; return }
-        let selected = pool.songs.filter { ids.contains($0.id) && !$0.track.isDemo && (force || !pool.companionReady($0)) }
+        let selected = pool.songs.filter { ids.contains($0.id) && !$0.track.isDemo && $0.state != .unavailable && (force || !pool.companionReady($0)) }
         guard !selected.isEmpty else { error = "所选歌曲已有兼容结果，或没有可提交的歌曲"; return }
         guard selected.count <= 1000 else { error = "每批最多选择 1000 首"; return }
         let jobs = selected.map { CompanionJob(id: $0.id, track: $0.track, account: pool.account, requestID: UUID()) }

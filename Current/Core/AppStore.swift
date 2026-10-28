@@ -219,8 +219,8 @@ final class AppStore: ObservableObject {
     // Preparing a result never changes transport state. Playback starts only on an explicit action.
     func stageRecommendation(prompt: String, tracks: [Track], query: RecommendationQuery) throws {
         guard listener != nil || demoMode else { return }
-        let result = RecommendationPlaylist(candidates: tracks).tracks
-        guard !result.isEmpty else { throw CurrentError.message("暂时没有符合条件的歌曲，试着调整需求或补充歌曲池。") }
+        let result = RecommendationPlaylist(candidates: tracks.filter { pool.isAvailable($0) }).tracks
+        guard !result.isEmpty else { throw CurrentError.message("暂时没有符合条件的歌曲，试着调整需求或补充歌曲。") }
         let session = ListeningSession(prompt: prompt, tracks: result, createdAt: Date(), listenerID: scope,
                                        recommendationQuery: query, allowsRepeat: true)
         generationError = nil
@@ -263,21 +263,25 @@ final class AppStore: ObservableObject {
     }
     func playLyrics(_ matches: [LyricsSearchMatch], selected: UUID, query: String, account: String) {
         guard let listener, account == pool.account, account == "netease:\(listener.id)",
-              let selectedIndex = matches.firstIndex(where: { $0.id == selected }) else { return }
-        let owned = Set(pool.songs.map(\.id))
-        guard matches.allSatisfy({ owned.contains($0.id) }) else { return }
+              matches.contains(where: { $0.id == selected }) else { return }
+        let owned = Set(pool.songs.filter { $0.state != .unavailable }.map(\.id))
+        let playable = matches.filter { owned.contains($0.id) }
+        guard let playableIndex = playable.firstIndex(where: { $0.id == selected }) else { return }
         cancelGeneration()
         clearRecommendation()
         activePrompt = "歌词：" + query
         message = "按歌词匹配的候选"; error = nil
-        queue = matches.map(\.track)
-        play(at: selectedIndex)
+        queue = playable.map(\.track)
+        play(at: playableIndex)
     }
     func replay(_ session: ListeningSession, startingAt index: Int = 0) {
         guard session.listenerID == scope else { return }
         guard demoMode || listener != nil else { return }
-        let tracks = RecommendationPlaylist(candidates: session.rankedCandidates ?? session.tracks).tracks
-        guard tracks.indices.contains(index) else { return }
+        let original = RecommendationPlaylist(candidates: session.rankedCandidates ?? session.tracks).tracks
+        guard original.indices.contains(index) else { return }
+        let tracks = original.filter { pool.isAvailable($0) }
+        guard !tracks.isEmpty else { return }
+        let playableIndex = tracks.firstIndex(where: { $0.id == original[index].id }) ?? 0
         cancelGeneration()
         clearRecommendation()
         activeRecommendation = session
@@ -289,16 +293,33 @@ final class AppStore: ObservableObject {
                                         listenerID: session.listenerID, recommendationQuery: session.recommendationQuery, allowsRepeat: true)
             full.id = session.id; sessions[index] = full; persist()
         }
-        play(at: index)
+        play(at: playableIndex)
     }
     func play(at index: Int) {
         guard queue.indices.contains(index) else { return }
+        guard pool.isAvailable(queue[index]) else {
+            if let next = queue.indices.dropFirst(index + 1).first(where: { pool.isAvailable(queue[$0]) }) { play(at: next) }
+            else { player.pause(); queueEnded = true; message = "其余歌曲音源不可用，已跳过。" }
+            return
+        }
         currentIndex = index
         queueEnded = false
         let song = queue[index]
         playbackTask?.cancel()
         let next = queue.indices.contains(index + 1) ? queue[index + 1] : nil
-        playbackTask = Task { await player.load(song, api: api, next: next) }
+        let ticket = accountEpoch, account = pool.account
+        playbackTask = Task {
+            await player.load(song, next: next) { [self] track in
+                do { return try await api.playbackURL(id: track.id) }
+                catch {
+                    if ticket == accountEpoch, account == pool.account, !Task.isCancelled,
+                       case CurrentError.unavailable(let reason) = error {
+                        pool.markUnavailable(trackID: track.id, reason: reason)
+                    }
+                    throw error
+                }
+            }
+        }
     }
     func next() {
         guard !queue.isEmpty else { return }

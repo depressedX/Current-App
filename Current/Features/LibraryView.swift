@@ -29,13 +29,10 @@ struct LibraryView: View {
     var body: some View {
         CurrentPage {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("我的音乐").font(CurrentTheme.TypeScale.section)
-                    Text("\(songs.count) 首已纳入范围").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                }
+                Text("\(songs.count) 首歌曲").font(CurrentTheme.TypeScale.section)
                 Spacer()
                 NavigationLink { SongPoolView() } label: {
-                    Text("管理").font(CurrentTheme.TypeScale.emphasis)
+                    Text("分析管理").font(CurrentTheme.TypeScale.emphasis)
                         .padding(.horizontal, 18).frame(minHeight: 44)
                         .background(CurrentTheme.surface, in: Capsule())
                 }.buttonStyle(CurrentPressStyle())
@@ -65,7 +62,7 @@ struct LibraryView: View {
             }
             NavigationLink { LyricsSearchView() } label: {
                 HStack(spacing: 12) {
-                    Text("歌词检索").font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary)
+                    Text("搜歌词").font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary)
                     Spacer()
                     Text("\(pool.lyricsCount) 首可检索").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                     Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
@@ -73,7 +70,7 @@ struct LibraryView: View {
                     .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
             }.buttonStyle(CurrentPressStyle())
             if songs.isEmpty {
-                ContentUnavailableView("音乐库还是空的", systemImage: "music.note.list", description: Text("在管理中加入歌曲，分析完成后会出现在这里。"))
+                ContentUnavailableView("音乐库还是空的", systemImage: "music.note.list", description: Text("在分析管理中加入歌曲，分析完成后会出现在这里。"))
                 if store.listener == nil && !store.demoMode {
                     PrimaryButton(title: "连接网易云") { showLogin = true }
                 }
@@ -401,31 +398,20 @@ struct ProfileView: View {
                 Divider()
                 NavigationLink { SongPoolView() } label: {
                     HStack {
-                        Text("歌曲池").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
+                        Text("分析管理").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
                         Spacer()
-                        Text("管理分析").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                         Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
                     }.frame(minHeight: 44)
-                }
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: CurrentTheme.Space.group) {
-                Text("最近听过").font(CurrentTheme.TypeScale.section)
-                if store.visibleSessions.isEmpty {
-                    Text("还没有听歌记录").font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
-                }
-                ForEach(store.visibleSessions.prefix(8)) { session in
-                    Button { store.replay(session) } label: {
-                        HStack(spacing: CurrentTheme.Space.row) {
-                            if let track = session.tracks.first { Artwork(track: track).frame(width: 44, height: 44) }
-                            VStack(alignment: .leading, spacing: CurrentTheme.Space.tiny) {
-                                Text(session.prompt).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary).lineLimit(2)
-                                Text("\(session.tracks.count) 首 · \(session.createdAt.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                            }
-                            Spacer(minLength: 0)
-                        }.padding(.vertical, 8).contentShape(Rectangle())
-                    }.buttonStyle(CurrentRowStyle())
+                }.accessibilityIdentifier("openAnalysisManagement")
+                if !store.visibleSessions.isEmpty {
+                    NavigationLink { ListeningHistoryView() } label: {
+                        HStack {
+                            Text("最近听过").font(CurrentTheme.TypeScale.body).foregroundStyle(.primary)
+                            Spacer()
+                            Text("\(store.visibleSessions.count) 组").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                            Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
+                        }.frame(minHeight: 44)
+                    }.accessibilityIdentifier("openListeningHistory")
                 }
             }
             if !store.visibleFeedback.isEmpty {
@@ -487,7 +473,7 @@ struct AboutView: View {
                 Text("Current").font(CurrentTheme.TypeScale.title)
                 Text("0.1.0 · 交互预览").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             }
-            aboutSection("选歌", "通过个人 DeepSeek Key 理解听歌需求，再按 BPM 条件和歌曲池听感排序。一次加入全部匹配歌曲；听完后可手动再听一遍。")
+            aboutSection("选歌", "通过个人 DeepSeek Key 理解听歌需求，再按 BPM 条件和音乐库听感排序。一次加入全部匹配歌曲；听完后可手动再听一遍。")
             aboutSection("推荐偏好", "喜欢和不合适仅用于 Current 的推荐偏好，永不同步网易云收藏。当前只记录反馈，待接入推荐排序后生效。")
             aboutSection("演示音频", "8 首原创合成片段，用于体验播放操作。")
             aboutSection("CarPlay", "先在 iPhone 准备歌单。真机使用需要 Apple 音频授权。")

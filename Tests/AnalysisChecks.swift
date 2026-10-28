@@ -390,6 +390,32 @@ actor AnalysisProbe {
         precondition(failures.songs.first { $0.id == failedID }?.state == .queued)
         print("PASS failure does not block next song; retry preserves explicit paused state")
 
+        var unavailableAttempts = 0
+        let unavailableURL = folder.appendingPathComponent("unavailable.json")
+        let unavailablePool = SongPoolStore(fileURL: unavailableURL, resolve: { _ in
+            unavailableAttempts += 1
+            throw CurrentError.unavailable(.noResource)
+        }, analyze: { try await probe.run($0) })
+        try await wait { !unavailablePool.loading }
+        unavailablePool.activate(account: "a"); unavailablePool.setForeground(true)
+        unavailablePool.enqueue([DemoCatalog.tracks[0]], source: "fixture"); unavailablePool.resume()
+        try await wait { unavailablePool.unavailableCount == 1 }
+        precondition(unavailablePool.pendingCount == 0 && unavailableAttempts == 1)
+        let unavailableID = unavailablePool.songs[0].id
+        unavailablePool.retryFailed(); unavailablePool.retry(unavailableID); unavailablePool.reanalyze(unavailableID)
+        unavailablePool.reserveCompanion([unavailableID])
+        unavailablePool.enqueue([DemoCatalog.tracks[0]], source: "another import"); unavailablePool.resume()
+        try await Task.sleep(for: .milliseconds(50))
+        precondition(unavailablePool.songs[0].state == .unavailable && unavailableAttempts == 1)
+        precondition(unavailablePool.songs[0].remotePending != true && !unavailablePool.songs[0].semanticReady)
+        try await Task.sleep(for: .milliseconds(50))
+        let unavailableReload = SongPoolStore(fileURL: unavailableURL, resolve: { _ in wav })
+        try await wait { !unavailableReload.loading }
+        unavailableReload.activate(account: "a")
+        precondition(unavailableReload.unavailableCount == 1 && unavailableReload.pendingCount == 0)
+        precondition(unavailableReload.songs[0].unavailability == .noResource)
+        print("PASS unavailable songs persist, leave pending work, and cannot be revived by retry/reimport/remote submission")
+
         let realTrack = Track(id: 167727, title: "Fixture", artist: "Test", album: "", artwork: nil, duration: 24, demoIndex: nil)
         var order: [String] = []
         let wikiPool = SongPoolStore(fileURL: folder.appendingPathComponent("wiki-priority.json"),
@@ -517,6 +543,19 @@ actor AnalysisProbe {
         do { _ = try await hearing.mockSemanticQueue(text: "ignored"); fatalError("Cross-account recommendations") }
         catch is CurrentError {}
         print("PASS semantic upgrade, real vector ranking, failed reanalysis preserves record, scope excludes other accounts")
+
+        hearing.activate(account: "a")
+        hearing.markUnavailable(trackID: realTrack.id, reason: .noResource)
+        precondition(hearing.songs[0].semantic != nil && !hearing.songs[0].semanticReady)
+        do { _ = try await hearing.mockSemanticQueue(text: "fixture"); fatalError("unavailable song with old vectors entered ranking") }
+        catch is CurrentError {}
+        let unavailableQuery = RecommendationQuery(summary: "fixture", bpmMinimum: nil, bpmMaximum: nil, bpmRequired: false,
+            preferences: [.init(concept: "test", direction: .prefer, weight: 1)], unsupported: [])
+        do { _ = try await hearing.recommendationQueue(query: unavailableQuery); fatalError("unavailable song entered production generation") }
+        catch is CurrentError {}
+        hearing.activate(account: "b")
+        precondition(hearing.isAvailable(realTrack))
+        print("PASS old acoustic/vector results cannot make unavailable songs eligible for recommendation; availability is account scoped")
 
         let batchFolder = folder.appendingPathComponent("recommendation-ranking")
         try FileManager.default.createDirectory(at: batchFolder, withIntermediateDirectories: true)

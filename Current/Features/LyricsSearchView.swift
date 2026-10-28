@@ -64,11 +64,11 @@ struct LyricsSearchView: View {
                 Text("按中文原词或网易云中文译词查找主题。")
                     .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                 if pool.lyricsCount == 0 {
-                    Button("补全歌词索引") { pool.indexMissingLyrics() }
+                    Button("补全歌词") { pool.indexMissingLyrics() }
                 }
             }
         }
-        .navigationTitle("歌词检索").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("搜歌词").navigationBarTitleDisplayMode(.inline)
         .onDisappear { task?.cancel() }
         .onChange(of: pool.account) { _, _ in task?.cancel(); results = nil; failure = nil; query = ""; searched = "" }
     }

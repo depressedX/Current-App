@@ -10,7 +10,7 @@ import Combine
     var onNext: (() -> Void)?
     var onPrevious: (() -> Void)?
     var onLike: (() -> Void)?
-    func load(_ song: Track, api: NetEaseAPI, next: Track? = nil) async { loadedTrack = song; loadCount += 1; playing = true }
+    func load(_ song: Track, next: Track? = nil, resolve: @escaping (Track) async throws -> URL) async { loadedTrack = song; loadCount += 1; playing = true }
     func pause() { playing = false }
     func seek(_ time: Double) { position = time }
     func stop() { playing = false; position = 0 }
@@ -154,5 +154,14 @@ import Combine
         libraryStore.playLibrary([catalog.songs[0].id], account: "demo")
         precondition(libraryStore.queue == [ranked[0]] && libraryStore.currentIndex == 0)
         print("PASS library play-all: ordered replacement, first-track playback, recommendation reset, empty/stale/account guards and repeated replacement")
+        let unavailableTrack = libraryStore.pool.songs[0].track
+        let availableTrack = libraryStore.pool.songs[1].track
+        libraryStore.pool.markUnavailable(trackID: unavailableTrack.id, reason: .noResource)
+        try libraryStore.stageRecommendation(prompt: "filter unavailable", tracks: [unavailableTrack, availableTrack], query: query)
+        precondition(libraryStore.generatedPlaylist?.tracks == [availableTrack])
+        let oldSession = ListeningSession(prompt: "old", tracks: [unavailableTrack, availableTrack], createdAt: Date(), listenerID: nil)
+        libraryStore.replay(oldSession)
+        precondition(libraryStore.queue == [availableTrack])
+        print("PASS unavailable songs are filtered from generated previews and historical playback")
     }
 }

@@ -37,9 +37,25 @@ final class SongPoolStore: ObservableObject {
     var localRunning: Bool {
         !paused && songs.contains { localRunIDs.contains($0.id) && ($0.state == .queued || $0.state.active) }
     }
-    var pendingCount: Int { songs.filter { $0.state != .completed && $0.state != .failed }.count }
+    var pendingCount: Int { songs.filter { $0.state == .queued || $0.state.active }.count }
+    var unavailableCount: Int { songs.filter { $0.state == .unavailable }.count }
+    var localPendingCount: Int { songs.filter { $0.state == .queued && $0.remotePending != true }.count }
+    func isAvailable(_ track: Track) -> Bool {
+        !songs.contains { $0.track.id == track.id && $0.state == .unavailable }
+    }
+    func markUnavailable(trackID: Int, reason: TrackUnavailability) {
+        guard let song = songs.first(where: { $0.track.id == trackID }) else { return }
+        if song.state.active { stop() }
+        guard let i = index(song.id) else { return }
+        catalog.songs[i].state = .unavailable
+        catalog.songs[i].unavailability = reason
+        catalog.songs[i].failure = reason.message
+        catalog.songs[i].remotePending = nil; catalog.songs[i].remoteRequestID = nil
+        catalog.songs[i].needsLyricsReindex = nil; catalog.songs[i].lyricsReturnState = nil
+        persist()
+    }
     var waitReason: String? {
-        if loading { return "正在恢复歌曲池" }
+        if loading { return "正在恢复分析数据" }
         if lyricsSearching { return "正在检索歌词" }
         if paused || !localRunning {
             if songs.contains(where: { $0.remotePending == true }) { return "等待 Mac 分析与同步" }
@@ -84,7 +100,7 @@ final class SongPoolStore: ObservableObject {
                 AppLog.shared.record(.storage, .recovered, operation: .poolLoad, count: catalog.songs.count)
             } catch {
                 AppLog.shared.record(.storage, .failed, level: .error, operation: .poolLoad, error: error)
-                failure = "歌曲池读取失败，原文件已保留。"
+                failure = "分析数据读取失败，原文件已保留。"
             }
             loading = false
             // An unreadable archive must not be overwritten by an empty pool.
@@ -105,11 +121,13 @@ final class SongPoolStore: ObservableObject {
     }
     func analyzeHearing() {
         guard !loading, failure == nil else { return }
+        var ids = Set<UUID>()
         for i in catalog.songs.indices where catalog.songs[i].account == account && catalog.songs[i].state == .completed && (!catalog.songs[i].semanticReady || catalog.songs[i].features?.profile?.version != ObjectiveProfile.currentVersion || (genreAnalyze != nil && catalog.songs[i].genres?.compatible != true)) {
             catalog.songs[i].needsReanalysis = true
             catalog.songs[i].state = .queued
+            ids.insert(catalog.songs[i].id)
         }
-        persist(); resume()
+        persist(); startLocal(ids)
     }
     func mockSemanticQueue(text: String, limit: Int? = 12) async throws -> (tracks: [Track], anchor: String) {
         guard let concepts else { throw SemanticError.missingResource }
@@ -120,7 +138,7 @@ final class SongPoolStore: ObservableObject {
         guard anchor.spaceID == concepts.spaceID else { throw SemanticError.incompatible }
         _ = try EmbeddingMath.unit(anchor.vector)
         let candidates = songs.filter(\.semanticReady)
-        guard !candidates.isEmpty else { throw CurrentError.message("先在我的 → 歌曲池完成听感分析。") }
+        guard !candidates.isEmpty else { throw CurrentError.message("先在我的 → 分析管理完成听感分析。") }
         let tracks = try await rank(candidates, scope: scope) { vector, _ in try EmbeddingMath.cosine(anchor.vector, vector) }
         return (limit.map { Array(tracks.prefix(max(0, $0))) } ?? tracks, anchor.label)
     }
@@ -155,8 +173,8 @@ final class SongPoolStore: ObservableObject {
         }
         guard !candidates.isEmpty else {
             throw CurrentError.message(query.hasGenreConditions
-                ? "歌曲池中没有满足曲风及其他条件的歌曲。可补充歌曲或完成曲风分析；本次未生成歌单。"
-                : "没有满足条件且已完成听感分析的歌曲。可调整条件或补充歌曲池；未知 BPM 不计为满足范围。")
+                ? "音乐库中没有满足曲风及其他条件的歌曲。可补充歌曲或完成曲风分析；本次未生成歌单。"
+                : "没有满足条件且已完成听感分析的歌曲。可调整条件或补充歌曲；未知 BPM 不计为满足范围。")
         }
         let tracks = try await rank(candidates, scope: account) { vector, song in
             var score = query.bpmPreference(song.resolvedBPM)
@@ -172,7 +190,7 @@ final class SongPoolStore: ObservableObject {
             }
             return score
         }
-        guard !tracks.isEmpty else { throw CurrentError.message("没有同时满足曲风、BPM 和听感条件的歌曲。可调整条件或补充歌曲池；本次未生成歌单。") }
+        guard !tracks.isEmpty else { throw CurrentError.message("没有同时满足曲风、BPM 和听感条件的歌曲。可调整条件或补充歌曲；本次未生成歌单。") }
         return tracks
     }
     private func rank(_ candidates: [PoolSong], scope: String,
@@ -184,11 +202,11 @@ final class SongPoolStore: ObservableObject {
             guard let semantic = song.semantic else { continue }
             do {
                 let vector = try await semanticDisk.load(semantic, songID: song.id, account: scope)
-                if let value = try score(vector, song) { ranked.append((song.track, value)) }
+                if isAvailable(song.track), let value = try score(vector, song) { ranked.append((song.track, value)) }
             } catch {
                 guard scope == account else { throw CancellationError() }
                 AppLog.shared.record(.storage, .failed, level: .error, operation: .semanticLoad, job: song.id, error: error)
-                if let i = index(song.id), catalog.songs[i].semantic?.recordID == semantic.recordID {
+                if let i = index(song.id), catalog.songs[i].state != .unavailable, catalog.songs[i].semantic?.recordID == semantic.recordID {
                     catalog.songs[i].failure = "听感结果无法读取，请重新分析"
                     catalog.songs[i].needsReanalysis = true
                     catalog.songs[i].state = .failed
@@ -199,15 +217,20 @@ final class SongPoolStore: ObservableObject {
         }
         guard scope == account else { throw CancellationError() }
         ranked.sort { $0.1 == $1.1 ? $0.0.id < $1.0.id : $0.1 > $1.1 }
-        return ranked.map { $0.0 }
+        return ranked.map { $0.0 }.filter { isAvailable($0) }
     }
     func contains(_ track: Track) -> Bool { songs.contains { $0.track.id == track.id } }
     func resume() {
         AppLog.shared.record(.analysis, .resumed, operation: .pool, reason: .user)
-        let ids = songs.filter { $0.state == .queued }.map(\.id)
-        onLocalAnalysis?(ids)
-        localRunIDs = Set(ids)
-        for i in catalog.songs.indices where catalog.songs[i].account == account && localRunIDs.contains(catalog.songs[i].id) {
+        // Songs handed to Mac keep their assignment; "本机分析" only takes the unassigned ones.
+        startLocal(Set(songs.filter { $0.state == .queued && $0.remotePending != true }.map(\.id)))
+    }
+    /// Runs exactly these songs on this device and leaves every other queue entry untouched.
+    private func startLocal(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        onLocalAnalysis?(Array(ids))
+        localRunIDs.formUnion(ids)
+        for i in catalog.songs.indices where catalog.songs[i].account == account && ids.contains(catalog.songs[i].id) {
             catalog.songs[i].remotePending = nil; catalog.songs[i].remoteRequestID = nil
         }
         paused = false; persist(); pump()
@@ -227,10 +250,12 @@ final class SongPoolStore: ObservableObject {
         persist(); pump()
     }
     func retryFailed() {
-        for i in catalog.songs.indices where catalog.songs[i].account == account && catalog.songs[i].state == .failed {
+        let ids = Set(songs.filter { $0.state == .failed }.map(\.id))
+        guard !ids.isEmpty else { return }
+        for i in catalog.songs.indices where catalog.songs[i].account == account && ids.contains(catalog.songs[i].id) {
             catalog.songs[i].state = .queued; catalog.songs[i].failure = nil
         }
-        persist(); resume()
+        persist(); startLocal(ids)
     }
     func reanalyze(_ id: UUID) {
         guard !loading, failure == nil, let i = index(id),
@@ -239,37 +264,39 @@ final class SongPoolStore: ObservableObject {
         catalog.songs[i].state = .queued
         catalog.songs[i].failure = nil
         AppLog.shared.record(.analysis, .enqueued, operation: .pool, job: id, reason: .user)
-        persist(); resume()
+        persist(); startLocal([id])
     }
     func backfillBPM(_ id: UUID) {
         guard !loading, failure == nil, let i = index(id), catalog.songs[i].canBackfillBPM else { return }
         catalog.songs[i].state = .queued
-        persist(); resume()
+        persist(); startLocal([id])
     }
     func refreshWiki(_ id: UUID) {
         guard !loading, failure == nil, let i = index(id), !catalog.songs[i].track.isDemo,
               catalog.songs[i].state == .completed, fetchWiki != nil else { return }
         catalog.songs[i].state = .queued
-        persist(); resume()
+        persist(); startLocal([id])
     }
-    var lyricsCount: Int { songs.filter { $0.lyrics?.compatible == true && $0.lyrics?.status == .indexed }.count }
+    var lyricsCount: Int { songs.filter { $0.state != .unavailable && $0.lyrics?.compatible == true && $0.lyrics?.status == .indexed }.count }
     func indexLyrics(_ id: UUID) {
         guard !loading, failure == nil, fetchLyrics != nil, let i = index(id),
               !catalog.songs[i].track.isDemo, catalog.songs[i].state == .completed || catalog.songs[i].state == .failed else { return }
         catalog.songs[i].lyricsReturnState = catalog.songs[i].state
         catalog.songs[i].needsLyricsReindex = true
         catalog.songs[i].state = .queued
-        persist(); resume()
+        persist(); startLocal([id])
     }
     func indexMissingLyrics() {
         guard !loading, failure == nil, fetchLyrics != nil else { return }
+        var ids = Set<UUID>()
         for song in songs where (song.state == .completed || song.state == .failed) && !song.track.isDemo && (song.lyrics?.compatible != true || song.lyricsFailure == true) {
-            guard let i = index(song.id), fetchLyrics != nil else { continue }
+            guard let i = index(song.id) else { continue }
             catalog.songs[i].lyricsReturnState = catalog.songs[i].state
             catalog.songs[i].needsLyricsReindex = true
             catalog.songs[i].state = .queued
+            ids.insert(song.id)
         }
-        persist(); resume()
+        persist(); startLocal(ids)
     }
     func searchLyrics(_ text: String) async throws -> LyricsSearchResults {
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -277,10 +304,10 @@ final class SongPoolStore: ObservableObject {
         guard !lyricsSearching else { throw CurrentError.message("请等待当前歌词检索完成") }
         let scope = account, ticket = epoch
         let entries = songs.compactMap { song -> LyricsSearchEntry? in
-            guard let summary = song.lyrics, summary.compatible, summary.status == .indexed else { return nil }
+            guard song.state != .unavailable, let summary = song.lyrics, summary.compatible, summary.status == .indexed else { return nil }
             return LyricsSearchEntry(songID: song.id, track: song.track, summary: summary)
         }
-        guard !entries.isEmpty else { throw CurrentError.message("先在歌曲池完成歌词索引") }
+        guard !entries.isEmpty else { throw CurrentError.message("先在分析管理完成歌词索引") }
         lyricsSearching = true
         stop() // Drain the serial analyser before loading another model session.
         defer { lyricsSearching = false; pump() }
@@ -295,7 +322,7 @@ final class SongPoolStore: ObservableObject {
             try Task.checkCancellation()
             guard scope == account, ticket == epoch else { throw CancellationError() }
             // Removed/reindexed songs must not return stale results after an await.
-            let current = Dictionary(songs.map { ($0.id, $0.lyrics?.recordID) }, uniquingKeysWith: { a, _ in a })
+            let current = Dictionary(songs.filter { $0.state != .unavailable }.map { ($0.id, $0.lyrics?.recordID) }, uniquingKeysWith: { a, _ in a })
             let expected = Dictionary(entries.map { ($0.songID, $0.summary.recordID) }, uniquingKeysWith: { a, _ in a })
             let valid = result.matches.filter { current[$0.id] != nil && current[$0.id] == expected[$0.id] }
             AppLog.shared.record(.analysis, .succeeded, operation: .lyricsSearch, span: span, count: valid.count, elapsed: Date().timeIntervalSince(began))
@@ -317,11 +344,41 @@ final class SongPoolStore: ObservableObject {
     }
     func reserveCompanion(_ ids: Set<UUID>, requests: [UUID: UUID] = [:]) {
         pause()
-        for i in catalog.songs.indices where catalog.songs[i].account == account && ids.contains(catalog.songs[i].id) {
+        for i in catalog.songs.indices where catalog.songs[i].account == account && ids.contains(catalog.songs[i].id) && catalog.songs[i].state != .unavailable {
             catalog.songs[i].remotePending = true; catalog.songs[i].remoteRequestID = requests[catalog.songs[i].id]
             catalog.songs[i].state = .queued
         }
         persist()
+    }
+    /// Terminal Mac statuses must survive disconnects and use the same request fencing as results.
+    func importCompanionStatuses(_ statuses: [CompanionJobStatus], account scope: String?) {
+        guard !loading, failure == nil, scope == account else { return }
+        var changed = false
+        for status in statuses {
+            guard let i = index(status.id), catalog.songs[i].track.id == status.track.id,
+                  catalog.songs[i].remotePending == true || (catalog.songs[i].state == .failed && catalog.songs[i].remoteRequestID != nil),
+                  catalog.songs[i].remoteRequestID == status.requestID else { continue }
+            if status.state == .unavailable, let reason = status.unavailability {
+                catalog.songs[i].state = .unavailable
+                catalog.songs[i].unavailability = reason
+                catalog.songs[i].failure = reason.message
+                catalog.songs[i].remotePending = nil; catalog.songs[i].remoteRequestID = nil
+                catalog.songs[i].needsLyricsReindex = nil; catalog.songs[i].lyricsReturnState = nil
+            } else if status.state == .failed {
+                guard catalog.songs[i].state != .failed || catalog.songs[i].failure != status.failure else { continue }
+                catalog.songs[i].state = .failed
+                catalog.songs[i].failure = status.failure
+                // Retain the assignment so a retry started directly on Mac can sync later.
+                catalog.songs[i].remotePending = nil
+            } else if catalog.songs[i].state == .failed,
+                      [.queued, .fetching, .analyzing, .completed, .authorizationRequired].contains(status.state) {
+                catalog.songs[i].state = .queued
+                catalog.songs[i].remotePending = true
+                catalog.songs[i].failure = nil
+            } else { continue }
+            changed = true
+        }
+        if changed { persist() }
     }
     /// ACK only after vectors and the catalogue are durably stored. Never accept
     /// results for removed songs, a previous account, or a superseded local run.
@@ -505,12 +562,16 @@ final class SongPoolStore: ObservableObject {
                     catalog.songs[i].finishedAt = Date()
                     update(song.id, state: .completed)
                 } catch {
-                    guard ticket == epoch, let i = index(song.id) else { return }
+                    guard ticket == epoch, let i = index(song.id), catalog.songs[i].state != .unavailable else { return }
                     AppLog.shared.record(.analysis, Task.isCancelled ? .cancelled : .failed,
                                          level: Task.isCancelled ? .info : .error, operation: .pool, job: song.id,
                                          stage: LogStage(rawValue: catalog.songs[i].state.rawValue), error: error)
                     if Task.isCancelled {
                         update(song.id, state: .queued)
+                    } else if case CurrentError.unavailable(let reason) = error {
+                        catalog.songs[i].unavailability = reason
+                        catalog.songs[i].failure = reason.message
+                        update(song.id, state: .unavailable)
                     } else {
                         catalog.songs[i].failure = Self.safeMessage(error, stage: catalog.songs[i].state)
                         update(song.id, state: .failed)
@@ -554,7 +615,7 @@ final class SongPoolStore: ObservableObject {
             do { try await disk.save(snapshot, revision: number) }
             catch {
                 AppLog.shared.record(.storage, .failed, level: .error, operation: .poolSave, error: error)
-                failure = "歌曲池保存失败，请检查可用空间。"; pause()
+                failure = "分析数据保存失败，请检查可用空间。"; pause()
             }
         }
     }

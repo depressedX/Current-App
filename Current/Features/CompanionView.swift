@@ -9,18 +9,39 @@ struct CompanionView: View {
     private var tasks: [CompanionJobStatus] { companion.activeStatuses }
     private var candidates: [PoolSong] {
         let submitted = Set(tasks.map(\.id))
-        return pool.songs.filter { !$0.track.isDemo && !submitted.contains($0.id) && (force || !pool.companionReady($0)) }
+        return pool.songs.filter { !$0.track.isDemo && $0.state != .unavailable && !submitted.contains($0.id) && (force || !pool.companionReady($0)) }
     }
     private var selectableIDs: Set<UUID> { Set(candidates.prefix(1000).map(\.id)) }
     private var failedCount: Int { tasks.filter { $0.state == .failed }.count }
     private var canPause: Bool { tasks.contains { $0.state == .queued || $0.state == .fetching || $0.state == .analyzing } }
+    private var statusSummary: String {
+        let running = tasks.filter { $0.state == .fetching || $0.state == .analyzing }.count
+        let waiting = tasks.filter { $0.state == .queued || $0.state == .authorizationRequired }.count
+        let syncing = tasks.filter { $0.state == .completed }.count
+        let missing = tasks.filter { $0.state == .unavailable }.count
+        var parts: [String] = []
+        if running > 0 { parts.append("\(running) 首处理中") }
+        if waiting > 0 { parts.append("\(waiting) 首排队") }
+        if syncing > 0 { parts.append("\(syncing) 首待同步") }
+        if missing > 0 { parts.append("\(missing) 首不可用") }
+        return parts.joined(separator: " · ")
+    }
+    private var emptyCandidates: String {
+        if tasks.isEmpty { return "没有待分析的歌曲。" }
+        if tasks.contains(where: { $0.state == .queued || $0.state == .fetching || $0.state == .analyzing }) {
+            return "其余歌曲正在处理，完成后会自动同步。"
+        }
+        if tasks.contains(where: { $0.state == .completed }) { return "其余歌曲已完成，正在等待同步。" }
+        if tasks.contains(where: { $0.state == .authorizationRequired }) { return "其余歌曲等待更新网易云授权。" }
+        return "其余歌曲分析失败或音源不可用，可到分析管理处理。"
+    }
     var body: some View {
         CurrentPage {
             connectionHeader
             if !tasks.isEmpty { taskSection }
             if companion.connected { selectionSection }
         }
-        .navigationTitle("Mac 分析伴侣").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Mac 分析").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if companion.paired {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -50,10 +71,20 @@ struct CompanionView: View {
     }
     private var connectionHeader: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(companion.paired ? companion.name : "连接 Mac，让手机轻松听歌", systemImage: "desktopcomputer")
-                .font(CurrentTheme.TypeScale.section)
-            Text(companion.connected ? "已连接 · 每完成一首自动同步，结果保存在歌曲池。" : "在附近的 Mac 打开分析伴侣并开启 Wi-Fi。手机离线后，已下发任务仍会继续。")
-                .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            HStack(spacing: 10) {
+                Label(companion.paired ? companion.name : "Mac 分析", systemImage: "desktopcomputer")
+                    .font(CurrentTheme.TypeScale.section)
+                if companion.paired {
+                    Text(companion.connected ? "已连接" : "未连接")
+                        .font(CurrentTheme.TypeScale.secondary.weight(.semibold))
+                        .foregroundStyle(companion.connected ? .green : CurrentTheme.muted)
+                }
+                Spacer()
+            }
+            if !companion.paired {
+                Text("在附近的 Mac 打开分析伴侣并开启 Wi-Fi。手机离线后，已下发任务仍会继续。")
+                    .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            }
             if companion.connected {
                 if !companion.authorized {
                     Button("更新网易云授权") { companion.updateAuthorization() }.buttonStyle(.bordered)
@@ -78,7 +109,7 @@ struct CompanionView: View {
                         Label(computer.name, systemImage: "desktopcomputer")
                             .font(CurrentTheme.TypeScale.emphasis)
                     }
-                    Text(companion.connecting ? "已配对 · 已发现 Mac，正在连接…" : "已配对 · 暂未连接，恢复后会自动补同步。")
+                    Text(companion.connecting ? "正在连接…" : "恢复后会自动补同步。")
                         .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                 }
             }
@@ -99,19 +130,21 @@ struct CompanionView: View {
                 Button("重试 \(failedCount) 首失败歌曲") { companion.retryFailed() }
                     .buttonStyle(.bordered).disabled(!companion.connected || !companion.authorized)
             }
-            Text("\(tasks.filter { $0.state == .fetching || $0.state == .analyzing }.count) 首处理中 · \(tasks.filter { $0.state == .queued || $0.state == .authorizationRequired }.count) 首排队 · \(tasks.filter { $0.state == .completed }.count) 首待同步")
-                .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-            DisclosureGroup("查看任务明细") {
+            if !statusSummary.isEmpty {
+                Text(statusSummary)
+                    .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            }
+            DisclosureGroup("任务列表") {
                 LazyVStack(spacing: 0) {
                 ForEach(tasks) { job in
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(job.track.title).font(CurrentTheme.TypeScale.emphasis).lineLimit(1)
-                            if let failure = job.failure { Text(failure).font(CurrentTheme.TypeScale.caption).foregroundStyle(.orange) }
+                            Text(job.track.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(job.state == .unavailable ? CurrentTheme.muted : .primary).lineLimit(1)
+                            if let failure = job.failure { Text(failure).font(CurrentTheme.TypeScale.caption).foregroundStyle(job.state == .unavailable ? CurrentTheme.muted : .orange) }
                         }
                         Spacer()
                         Text(job.state.title).font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
-                    }.padding(.vertical, 8)
+                    }.opacity(job.state == .unavailable ? 0.6 : 1).padding(.vertical, 8)
                 }
                 }
             }
@@ -129,7 +162,7 @@ struct CompanionView: View {
                 }
             }
             if candidates.isEmpty {
-                Text(tasks.isEmpty ? "歌曲均已有分析结果，可回歌曲池查看。" : "其余歌曲正在处理，完成后会自动同步。")
+                Text(emptyCandidates)
                     .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             } else {
                 PrimaryButton(title: "交给 Mac 分析 · \(selected.count) 首", symbol: "desktopcomputer") {

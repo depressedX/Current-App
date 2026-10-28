@@ -94,18 +94,23 @@ struct CompanionDashboard: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
-                metric("待处理", count: worker.jobs.filter { $0.state == .queued || $0.state == .authorizationRequired }.count)
+                metric("待处理", count: worker.pendingCount)
                 metric("等待同步", count: worker.jobs.filter { $0.state == .completed }.count)
                 metric("进行中", count: worker.runningCount)
+                metric("不可用", count: worker.unavailableCount)
             }
             HStack {
-                Text("分析队列").font(.headline)
+                Text("分析记录").font(.headline)
                 Spacer()
                 Button(worker.syncPaused ? "恢复同步" : "暂停同步") { worker.setSyncPaused(!worker.syncPaused) }
                 if worker.jobs.contains(where: { $0.state == .failed }) {
                     Button("重试失败项") { worker.retryFailed() }
                 }
             }.buttonStyle(.bordered)
+            if worker.unavailableCount > 0 {
+                Text("不可用歌曲已灰显，不计入待处理，不参与失败重试、歌单生成与播放。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if worker.activeJobs.isEmpty {
                 ContentUnavailableView("暂无待处理任务", systemImage: "music.note.list",
                     description: Text("完成的结果会保存在手机歌曲池，已同步任务自动移出队列。"))
@@ -118,7 +123,7 @@ struct CompanionDashboard: View {
                             Image(systemName: "music.note").foregroundStyle(CompanionStyle.accent)
                                 .frame(width: 44, height: 44).background(CompanionStyle.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(job.track.title).font(.body.weight(.medium)).lineLimit(1)
+                                Text(job.track.title).font(.body.weight(.medium)).foregroundStyle(job.state == .unavailable ? .secondary : .primary).lineLimit(1)
                                 Text(job.failure ?? job.track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                             }
                             Spacer(minLength: 12)
@@ -128,7 +133,7 @@ struct CompanionDashboard: View {
                                 Button { worker.cancel([job.id]) } label: { Image(systemName: "xmark.circle") }
                                     .buttonStyle(.plain).foregroundStyle(.secondary).help("取消此任务")
                             }
-                        }.padding(14).background(CompanionStyle.surface)
+                        }.opacity(job.state == .unavailable ? 0.55 : 1).padding(14).background(CompanionStyle.surface)
                     }
                 }.clipShape(RoundedRectangle(cornerRadius: 12))
             }

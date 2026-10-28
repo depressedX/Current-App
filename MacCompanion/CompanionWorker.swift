@@ -7,6 +7,8 @@ import Network
 final class CompanionWorker: ObservableObject {
     @Published private(set) var jobs: [CompanionJob] = []
     var activeJobs: [CompanionJob] { jobs.filter { $0.state != .synced } }
+    var pendingCount: Int { jobs.filter { $0.state == .queued || $0.state == .authorizationRequired }.count }
+    var unavailableCount: Int { jobs.filter { $0.state == .unavailable }.count }
     @Published private(set) var pairedDevice: String?
     @Published private(set) var account: String?
     @Published private(set) var connected = false
@@ -376,7 +378,7 @@ final class CompanionWorker: ObservableObject {
     private func receive(_ message: CompanionMessage, peer id: UUID) {
         guard let peer = peers[id] else { return }
         if message.kind == .hello {
-            guard message.signature == CompanionProtocol.signature, let device = message.device,
+            guard message.version == CompanionProtocol.version, message.signature == CompanionProtocol.signature, let device = message.device,
                   device.count <= 128, pairedDevice == device || (pendingPairDevice == device && Date() < pairingExpires) else {
                 peer.send(CompanionMessage(kind: .error, text: "配对设备或分析版本不匹配")); return
             }
@@ -434,6 +436,11 @@ final class CompanionWorker: ObservableObject {
             for entry in entries where entry.account == scope && inventory.contains(entry.id) && !entry.track.isDemo && entry.requestID != nil {
                 if let i = jobs.firstIndex(where: { $0.id == entry.id }) {
                     guard jobs[i].track.id == entry.track.id, jobs[i].account == scope else { continue }
+                    if jobs[i].state == .unavailable {
+                        // A repeated batch/force submission cannot revive a known unavailable song.
+                        jobs[i].requestID = entry.requestID
+                        continue
+                    }
                     if jobs[i].requestID != entry.requestID { interrupt(ids: [entry.id]) }
                     jobs[i].requestID = entry.requestID; sent.remove(entry.id)
                     if message.force != true, var result = jobs[i].result, (try? result.validate()) != nil {
@@ -567,6 +574,11 @@ final class CompanionWorker: ObservableObject {
                 else if case CurrentError.expired = error {
                     jobs[i].state = .authorizationRequired
                     vault.delete("mac-auth"); api.clear(); interrupt()
+                } else if case CurrentError.unavailable(let reason) = error {
+                    jobs[i].state = .unavailable
+                    jobs[i].unavailability = reason
+                    jobs[i].failure = reason.message
+                    jobs[i].result = nil
                 } else {
                     jobs[i].state = .failed
                     jobs[i].failure = SongPoolErrorText.message(error)
@@ -591,7 +603,7 @@ final class CompanionWorker: ObservableObject {
         return true
     }
     private func publish() {
-        let statuses = activeJobs.map { CompanionJobStatus(id: $0.id, track: $0.track, state: $0.state, failure: $0.failure) }
+        let statuses = activeJobs.map { CompanionJobStatus(id: $0.id, track: $0.track, state: $0.state, failure: $0.failure, requestID: $0.requestID, unavailability: $0.unavailability) }
         for id in authenticated {
             peers[id]?.send(CompanionMessage(kind: .status, account: account, statuses: statuses, analysisPaused: analysisPaused, syncPaused: syncPaused, authorizationAvailable: api.hasCredentials))
         }
@@ -627,6 +639,11 @@ enum SongPoolErrorText {
         if let error = error as? GenreError { return error.localizedDescription }
         if let error = error as? SemanticError { return error.localizedDescription }
         if let error = error as? AnalysisError { return error.localizedDescription }
-        return "获取或分析失败，请重试；如授权过期，请在手机更新授权"
+        if case CurrentError.unavailable(let reason) = error { return reason.message }
+        if case CurrentError.expired = error { return "网易云授权已过期，请在手机更新授权" }
+        if let issue = error as? URLError {
+            return issue.code == .timedOut ? "获取音频超时，请重试" : "获取音频时网络出错，请重试"
+        }
+        return "获取或分析失败，请重试"
     }
 }

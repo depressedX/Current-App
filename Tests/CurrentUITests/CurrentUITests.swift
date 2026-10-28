@@ -221,7 +221,7 @@ final class CurrentUITests: XCTestCase {
         demo.tap()
         // Semantic recommendations consume the pool, so prepare it through the real management flow.
         app.tabBars.buttons["我的"].tap()
-        app.buttons["歌曲池"].tap()
+        app.buttons["openAnalysisManagement"].tap()
         app.buttons["加入歌曲"].tap()
         app.buttons["原创演示曲库"].tap()
         XCTAssertTrue(app.buttons["全部加入"].waitForExistence(timeout: 5))
@@ -231,7 +231,8 @@ final class CurrentUITests: XCTestCase {
         let toggle = app.buttons["poolToggle"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.tap()
-        XCTAssertTrue(app.staticTexts["8 首已分析"].waitForExistence(timeout: 120))
+        app.tabBars.buttons["音乐库"].tap()
+        XCTAssertTrue(app.staticTexts["8 首歌曲"].waitForExistence(timeout: 120))
         app.tabBars.buttons["此刻"].tap()
         let input = app.textFields["promptInput"].exists ? app.textFields["promptInput"] : app.textViews["promptInput"]
         input.tap(); input.typeText("Evening rock")

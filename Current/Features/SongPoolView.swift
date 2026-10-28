@@ -4,72 +4,46 @@ struct SongPoolView: View {
     @EnvironmentObject private var pool: SongPoolStore
     @State private var showImport = false
     @State private var selection = 0
+    private var pending: [PoolSong] {
+        pool.songs.filter { $0.state != .completed && $0.state != .failed && $0.state != .unavailable }
+    }
+    private var failed: [PoolSong] { pool.songs.filter { $0.state == .failed } }
+    private var unavailable: [PoolSong] { pool.songs.filter { $0.state == .unavailable } }
     private var visible: [PoolSong] {
-        pool.songs.filter { selection == 0 ? $0.state != .completed : $0.state == .completed }
+        switch selection {
+        case 1: return failed
+        case 2: return unavailable
+        default: return pending
+        }
+    }
+    private var outdated: Bool {
+        pool.songs.contains { $0.state == .completed && ($0.features?.profile?.version != ObjectiveProfile.currentVersion || $0.genres?.compatible != true) }
+    }
+    private var missingLyrics: Bool {
+        pool.songs.contains { ($0.state == .completed || $0.state == .failed) && !$0.track.isDemo && ($0.lyrics?.compatible != true || $0.lyricsFailure == true) }
     }
     var body: some View {
         CurrentPage {
             NavigationLink { CompanionView() } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "desktopcomputer").foregroundStyle(CurrentTheme.accent)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("交给 Mac 分析").font(CurrentTheme.TypeScale.emphasis)
-                        Text("手动提交 · 完成后自动同步").font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
-                    }
+                    Text("Mac 分析").font(CurrentTheme.TypeScale.emphasis)
                     Spacer(); Image(systemName: "chevron.right").foregroundStyle(CurrentTheme.muted)
                 }.foregroundStyle(.primary).padding(16)
                     .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
             }.buttonStyle(CurrentPressStyle())
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(pool.completedCount) 首已分析").font(CurrentTheme.TypeScale.section)
-                        Text(queueSummary).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                    }
-                    Spacer()
-                    if pool.pendingCount > 0 {
-                        Button(pool.localRunning ? "暂停本机分析" : "本机分析") { pool.localRunning ? pool.pause() : pool.resume() }
-                            .buttonStyle(PoolActionStyle(prominent: true))
-                            .disabled(pool.loading || pool.failure != nil)
-                            .accessibilityIdentifier("poolToggle")
-                    }
-                }
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { queueActions }
-                    VStack(alignment: .leading, spacing: 8) { queueActions }
-                }
-                if let reason = pool.waitReason, pool.pendingCount > 0 {
-                    Text(reason).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                }
-                if let failure = pool.failure {
-                    Text(failure).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.accent)
-                }
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                NavigationLink { LyricsSearchView() } label: {
-                    HStack(spacing: 12) {
-                        Text("歌词检索").font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary)
-                        Spacer()
-                        Text("\(pool.lyricsCount) 首可检索").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                        Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
-                    }.frame(minHeight: 44)
-                        .padding(.horizontal, 16).padding(.vertical, 4)
-                        .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
-                        .contentShape(RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
-                }.buttonStyle(CurrentPressStyle())
-                if pool.songs.contains(where: { ($0.state == .completed || $0.state == .failed) && !$0.track.isDemo && ($0.lyrics?.compatible != true || $0.lyricsFailure == true) }) {
-                    Button("本机补全歌词索引") { pool.indexMissingLyrics(); selection = 0 }
-                        .buttonStyle(PoolActionStyle())
-                }
-            }
+            actions
             Picker("歌曲状态", selection: $selection) {
-                Text("待处理").tag(0)
-                Text("已分析").tag(1)
+                Text("待分析 \(pending.count)").tag(0)
+                Text("失败 \(failed.count)").tag(1)
+                Text("不可用 \(unavailable.count)").tag(2)
             }.pickerStyle(.segmented)
+            if selection == 2 && !unavailable.isEmpty {
+                Text("音源不可用的歌曲不参与歌单生成与播放。")
+                    .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            }
             if visible.isEmpty {
-                ContentUnavailableView(selection == 0 ? "没有待处理的歌曲" : "还没有分析结果",
-                                       systemImage: "waveform",
-                                       description: Text(selection == 0 ? "从歌单加入歌曲，再开始分析。" : "分析完成后，在这里查看维度。"))
+                ContentUnavailableView(emptyTitle, systemImage: emptySymbol, description: Text(emptyDescription))
             }
             LazyVStack(spacing: CurrentTheme.Space.small) {
                 ForEach(visible) { song in
@@ -77,7 +51,7 @@ struct SongPoolView: View {
                         HStack(spacing: CurrentTheme.Space.row) {
                             Artwork(track: song.track).frame(width: 48, height: 48)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(song.track.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary).lineLimit(1)
+                                Text(song.track.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(song.state == .unavailable ? CurrentTheme.muted : .primary).lineLimit(1)
                                 Text(subtitle(song)).font(CurrentTheme.TypeScale.secondary)
                                     .foregroundStyle(song.state == .failed ? CurrentTheme.accent : CurrentTheme.muted)
                                     .lineLimit(1)
@@ -85,43 +59,83 @@ struct SongPoolView: View {
                             Spacer(minLength: 8)
                             if song.state.active { ProgressView() }
                             else { Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted) }
-                        }.padding(.vertical, 8).contentShape(Rectangle())
+                        }.saturation(song.state == .unavailable ? 0 : 1)
+                            .opacity(song.state == .unavailable ? 0.6 : 1)
+                            .padding(.vertical, 8).contentShape(Rectangle())
                     }.buttonStyle(CurrentRowStyle())
                 }
             }
         }
-        .navigationTitle("歌曲池").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("分析管理").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showImport = true } label: { Image(systemName: "plus") }
                     .accessibilityLabel("加入歌曲").disabled(pool.loading || pool.failure != nil)
             }
+            if outdated || missingLyrics {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        if outdated { Button("更新分析") { pool.analyzeHearing(); selection = 0 } }
+                        if missingLyrics { Button("补全歌词") { pool.indexMissingLyrics(); selection = 0 } }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                        .accessibilityLabel("更多操作")
+                }
+            }
         }
         .sheet(isPresented: $showImport) { NavigationStack { PoolImportView() } }
     }
-    private var queueSummary: String {
-        let failed = pool.songs.filter { $0.state == .failed }.count
-        return failed > 0 ? "\(pool.pendingCount) 首待处理 · \(failed) 首失败" : "\(pool.pendingCount) 首待处理"
-    }
-    @ViewBuilder private var queueActions: some View {
-        if pool.songs.contains(where: { $0.state == .completed && ($0.features?.profile?.version != ObjectiveProfile.currentVersion || $0.genres?.compatible != true) }) {
-            Button("本机更新分析") { pool.analyzeHearing(); selection = 0 }
-                .buttonStyle(PoolActionStyle())
-        }
-        if pool.songs.contains(where: { $0.state == .failed }) {
-            Button("重试失败项") { pool.retryFailed() }
-                .buttonStyle(PoolActionStyle())
+    @ViewBuilder private var actions: some View {
+        if pool.localRunning || (selection == 0 && pool.localPendingCount > 0) {
+            Button(pool.localRunning ? "暂停本机分析" : "本机分析") { pool.localRunning ? pool.pause() : pool.resume() }
+                .buttonStyle(PoolActionStyle(prominent: true))
+                .disabled(pool.loading || pool.failure != nil)
+                .accessibilityIdentifier("poolToggle")
+            if selection == 0, let reason = pool.waitReason {
+                Text(reason).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            }
+        } else if selection == 1 && !failed.isEmpty {
+            Button("重试失败项 · \(failed.count) 首") { pool.retryFailed() }
+                .buttonStyle(PoolActionStyle(prominent: true))
+                .disabled(pool.loading || pool.failure != nil)
                 .accessibilityIdentifier("retryFailedAnalysis")
+        }
+        if let failure = pool.failure {
+            Text(failure).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.accent)
+        }
+    }
+    private var emptyTitle: String {
+        switch selection {
+        case 1: return "没有失败的歌曲"
+        case 2: return "没有不可用的歌曲"
+        default: return "没有待分析的歌曲"
+        }
+    }
+    private var emptySymbol: String {
+        switch selection {
+        case 1: return "exclamationmark.triangle"
+        case 2: return "slash.circle"
+        default: return "waveform"
+        }
+    }
+    private var emptyDescription: String {
+        switch selection {
+        case 1: return "分析失败的歌曲会保留在这里，可重试。"
+        case 2: return "音源不可用的歌曲会保留在这里，不参与歌单生成与播放。"
+        default: return failed.isEmpty ? "从歌单加入歌曲。" : "从歌单加入歌曲，或重试失败的歌曲。"
         }
     }
     private func subtitle(_ song: PoolSong) -> String {
-        if song.features != nil, song.state == .completed {
-            if let bpm = song.resolvedBPM {
-                return "\(song.bpmSource == .localAnalysis ? "约 " : "")\(Int(bpm.rounded())) BPM · \(song.features?.profile.map { $0.classifierAvailable && $0.classifiedWindows > 0 } == true ? "乐器已识别" : "待更新分析")"
-            }
-            return song.features?.profile.map { $0.classifierAvailable && $0.classifiedWindows > 0 } == true ? "乐器已识别 · BPM 未知" : "BPM 未知 · 待更新分析"
+        if song.state == .unavailable { return song.unavailability?.message ?? "音源不可用" }
+        if song.state == .failed { return song.failure ?? "分析失败" }
+        if song.remotePending == true { return "已交给 Mac · 等待同步" }
+        if song.needsReanalysis == true { return "重新分析中" }
+        if song.features != nil {
+            var parts: [String] = []
+            if let bpm = song.resolvedBPM { parts.append("\(song.bpmSource == .localAnalysis ? "约 " : "")\(Int(bpm.rounded())) BPM") }
+            if song.features?.profile.map({ $0.classifierAvailable && $0.classifiedWindows > 0 }) == true { parts.append("乐器已识别") }
+            return parts.isEmpty ? song.state.title : parts.joined(separator: " · ")
         }
-        return song.remotePending == true ? "已交给 Mac · 等待同步" : (song.state == .failed ? "分析失败 · 可重试" : song.state.title)
+        return song.state.title
     }
 }
 
@@ -146,8 +160,6 @@ private struct PoolImportView: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         CurrentPage {
-            Text("选择歌单，可整单加入，也可挑选单曲。")
-                .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             if store.listener != nil {
                 if store.libraryLoading { ProgressView("读取歌单") }
                 if store.playlists.isEmpty && !store.libraryLoading {
@@ -213,7 +225,7 @@ private struct PoolPlaylistView: View {
                             Button { add([track]) } label: {
                                 Image(systemName: added.contains(track.id) ? "checkmark" : "plus").frame(width: 44, height: 44)
                             }.disabled(added.contains(track.id) || loadedAccount != pool.account)
-                                .accessibilityLabel(added.contains(track.id) ? "已在歌曲池" : "加入\(track.title)")
+                                .accessibilityLabel(added.contains(track.id) ? "已加入" : "加入\(track.title)")
                         }
                     }
                 }
@@ -245,7 +257,7 @@ private struct PoolPlaylistView: View {
     private func add(_ selected: [Track]) {
         guard loadedAccount == pool.account else { return }
         let count = pool.enqueue(selected, source: playlist?.title ?? "原创演示曲库")
-        notice = count > 0 ? "已加入 \(count) 首，在歌曲池继续分析。" : "歌曲已在池中"
+        notice = count > 0 ? "已加入 \(count) 首" : "歌曲已在池中"
     }
 }
 
@@ -253,6 +265,7 @@ struct PoolSongDetail: View {
     let id: UUID
     @EnvironmentObject private var pool: SongPoolStore
     @Environment(\.dismiss) private var dismiss
+    @State private var showMore = false
     private var song: PoolSong? { pool.songs.first { $0.id == id } }
     var body: some View {
         CurrentPage {
@@ -278,118 +291,24 @@ struct PoolSongDetail: View {
                     .accessibilityElement(children: .combine)
                     Spacer()
                 }
-                if let failure = song.failure, song.state == .failed {
+                if let failure = song.failure, song.state == .failed || song.state == .unavailable {
                     Text(failure).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-
                 }
-                if song.needsReanalysis == true && song.features != nil {
+                if song.needsReanalysis == true && song.features != nil && song.state != .unavailable {
                     Text(song.state == .failed ? "重新分析失败，以下保留上次结果。" : "正在重新分析，以下为上次结果。")
                         .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                 }
+                if hasResults(song) {
+                    results(song)
+                } else if song.state != .failed && song.state != .unavailable {
+                    Text("还没有分析结果。完成后会在这里显示曲风、BPM 和乐器。")
+                        .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                }
                 if song.state == .completed || song.state == .failed {
-                    PrimaryButton(title: "本机重新分析") { pool.reanalyze(id) }
-                        .accessibilityIdentifier("reanalyzeSong")
+                    moreSection(song)
                 }
-                GroupBox("节奏") {
-                    VStack(spacing: 12) {
-                        dimension("BPM", song.resolvedBPM.map { String(format: "%.1f", $0) } ?? "未知")
-                        dimension("来源", song.bpmSource?.title ?? "暂无可靠结果")
-                        if let wiki = song.wikiBPM {
-                            dimension("百科获取时间", wiki.fetchedAt.formatted(date: .abbreviated, time: .shortened))
-                        }
-                        if !song.track.isDemo { dimension("网易云百科", song.bpmLookup?.title ?? "尚未获取") }
-                        if let features = song.features {
-                            dimension("本地估计", features.bpm.map { String(format: "%.1f", $0) } ?? "未知")
-                        }
-                    }.padding(.vertical, 8)
-                }
-                GroupBox("歌词") {
-                    VStack(spacing: 12) {
-                        if let lyrics = song.lyrics {
-                            Text(lyrics.status == .indexed ? "已索引" : lyrics.status.title)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            if !lyrics.compatible { Text("索引需要更新").foregroundStyle(CurrentTheme.muted) }
-                        } else { Text("尚未建立歌词索引").foregroundStyle(CurrentTheme.muted) }
-                        if song.lyricsFailure == true {
-                            Text(song.lyrics == nil ? "本次歌词分析失败，请重试" : "本次更新失败，保留上次歌词结果")
-                                .foregroundStyle(CurrentTheme.muted)
-                        }
-                        if !song.track.isDemo && (song.state == .completed || song.state == .failed) {
-                            detailAction("更新歌词索引") { pool.indexLyrics(id) }
-                        }
-                    }.font(CurrentTheme.TypeScale.secondary).padding(.vertical, 8)
-                }
-                GroupBox("网易云百科") {
-                    VStack(spacing: 12) {
-                        if let wiki = song.wikiMetadata {
-                            ForEach(wiki.fields.indices, id: \.self) { index in
-                                let field = wiki.fields[index]
-                                dimension(field.title, field.values.joined(separator: "、"))
-                            }
-                            if wiki.fields.isEmpty { Text("暂无百科资料").foregroundStyle(CurrentTheme.muted) }
-                            dimension("更新时间", wiki.fetchedAt.formatted(date: .abbreviated, time: .shortened))
-                        } else { Text("尚未录入百科资料").foregroundStyle(CurrentTheme.muted) }
-                        if song.bpmLookup == .failed {
-                            Text("本次获取失败，已保留上次资料").foregroundStyle(CurrentTheme.muted)
-                        }
-                        if !song.track.isDemo && song.state == .completed {
-                            detailAction("更新网易云百科") { pool.refreshWiki(id) }
-                        }
-                    }.font(CurrentTheme.TypeScale.secondary).padding(.vertical, 8)
-                }
-                GroupBox("乐器识别") {
-                    VStack(spacing: 12) {
-                        if let profile = song.features?.profile {
-                            if !profile.classifierAvailable || profile.classifiedWindows == 0 {
-                                Text("本次未能完成识别，可重新分析")
-                                    .foregroundStyle(CurrentTheme.muted)
-                            } else if profile.soundLabels.isEmpty {
-                                Text("暂未识别出明确乐器")
-                                    .foregroundStyle(CurrentTheme.muted)
-                            } else {
-                                Text(profile.soundLabels.map(\.label).joined(separator: "、"))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } else {
-                            Text("重新分析后查看乐器")
-                                .foregroundStyle(CurrentTheme.muted)
-                        }
-                    }.font(CurrentTheme.TypeScale.secondary).padding(.vertical, 8)
-                }
-                GroupBox("音乐风格") {
-                    VStack(spacing: 12) {
-                        if let genres = song.genres {
-                            ForEach(genres.matches) { match in
-                                HStack(alignment: .firstTextBaseline) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(match.title).foregroundStyle(.primary)
-                                        if match.familyTitle != match.title {
-                                            Text(match.familyTitle).font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
-                                        }
-                                    }
-                                    Spacer()
-                                    Text(String(format: "%.3f", match.score))
-                                        .foregroundStyle(CurrentTheme.muted).monospacedDigit()
-                                }.font(CurrentTheme.TypeScale.secondary)
-                            }
-                            if !genres.compatible {
-                                Text("旧版结果，请重新分析").foregroundStyle(CurrentTheme.muted)
-                            }
-                        } else {
-                            Text("重新分析后查看风格候选").foregroundStyle(CurrentTheme.muted)
-                        }
-                    }.font(CurrentTheme.TypeScale.secondary).padding(.vertical, 8)
-                }
-                GroupBox("待定维度") {
-                    VStack(spacing: 12) {
-                        dimension("人声", "待定")
-                        dimension("听感平稳程度", "待定")
-                    }.padding(.vertical, 8)
-                }
-                Text("来自：\(song.sources.joined(separator: "、"))")
-                    .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                 Button(role: .destructive) { pool.remove(id); dismiss() } label: {
-                    Text("移出歌曲池")
+                    Text("移出音乐库")
                         .font(CurrentTheme.TypeScale.emphasis)
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .foregroundStyle(CurrentTheme.accent)
@@ -398,13 +317,91 @@ struct PoolSongDetail: View {
                 }.buttonStyle(CurrentPressStyle())
             }
         }
-        .navigationTitle("分析详情").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("歌曲详情").navigationBarTitleDisplayMode(.inline)
+    }
+    private func hasResults(_ song: PoolSong) -> Bool {
+        song.features != nil || song.genres != nil || song.wikiMetadata != nil
+    }
+    private func results(_ song: PoolSong) -> some View {
+        VStack(alignment: .leading, spacing: CurrentTheme.Space.group) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let bpm = song.resolvedBPM {
+                    Text("\(song.bpmSource == .localAnalysis ? "约 " : "")\(Int(bpm.rounded()))")
+                        .font(.system(size: 34, weight: .semibold, design: .rounded)).monospacedDigit()
+                    Text("BPM").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                } else {
+                    Text("BPM 未知").font(CurrentTheme.TypeScale.section).foregroundStyle(CurrentTheme.muted)
+                }
+                Spacer()
+            }
+            if let genres = song.genres {
+                field("曲风", genres.matches.isEmpty ? "未识别" : genres.matches.prefix(3).map(\.title).joined(separator: " · ") + (genres.compatible ? "" : " · 待更新"))
+            } else if song.features != nil {
+                field("曲风", "未识别")
+            }
+            if let profile = song.features?.profile {
+                let labels = profile.soundLabels.map(\.label)
+                field("乐器", profile.classifierAvailable && profile.classifiedWindows > 0 ? (labels.isEmpty ? "未识别" : labels.joined(separator: " · ")) : "未能识别")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
+    }
+    private func moreSection(_ song: PoolSong) -> some View {
+        DisclosureGroup(isExpanded: $showMore) {
+            VStack(alignment: .leading, spacing: 12) {
+                detailAction("本机重新分析") { pool.reanalyze(id) }
+                    .accessibilityIdentifier("reanalyzeSong")
+                if !song.track.isDemo && song.state == .completed {
+                    detailAction("更新资料") { pool.refreshWiki(id) }
+                }
+                if !song.track.isDemo {
+                    detailAction("更新歌词") { pool.indexLyrics(id) }
+                }
+                Divider()
+                lyricsStatus(song)
+                Divider()
+                fact("BPM 来源", song.bpmSource?.title ?? "暂无可靠结果")
+                if let estimate = song.features?.bpm { fact("本地估计", String(format: "%.1f", estimate)) }
+                if !song.track.isDemo { fact("网易云百科", song.bpmLookup?.title ?? "尚未获取") }
+                if let wiki = song.wikiBPM { fact("百科获取时间", wiki.fetchedAt.shortDescription) }
+                if let wiki = song.wikiMetadata {
+                    if wiki.fields.isEmpty { fact("百科资料", "暂无") }
+                    ForEach(wiki.fields.indices, id: \.self) { index in
+                        fact(wiki.fields[index].title, wiki.fields[index].values.joined(separator: "、"))
+                    }
+                    fact("资料更新时间", wiki.fetchedAt.shortDescription)
+                }
+                fact("加入来源", song.sources.joined(separator: "、"))
+            }.padding(.top, 12)
+        } label: {
+            Text("更多").font(CurrentTheme.TypeScale.emphasis)
+        }
+    }
+    @ViewBuilder private func lyricsStatus(_ song: PoolSong) -> some View {
+        VStack(alignment: .leading, spacing: CurrentTheme.Space.tiny) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("歌词").foregroundStyle(CurrentTheme.muted)
+                Spacer()
+                Text(lyricsValue(song))
+            }.font(CurrentTheme.TypeScale.secondary)
+            if song.lyricsFailure == true {
+                Text(song.lyrics == nil ? "本次歌词分析失败，可重试" : "本次更新失败，已保留上次结果")
+                    .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+            }
+        }
+    }
+    private func lyricsValue(_ song: PoolSong) -> String {
+        guard let lyrics = song.lyrics else { return "尚未建立索引" }
+        if !lyrics.compatible { return "索引需要更新" }
+        return lyrics.status == .indexed ? "已索引" : lyrics.status.title
     }
     private func statusColor(_ state: AnalysisState) -> Color {
         switch state {
         case .completed: return .green
         case .failed: return CurrentTheme.accent
-        case .queued: return .secondary
+        case .queued, .unavailable: return .secondary
         default: return CurrentTheme.accent
         }
     }
@@ -417,11 +414,17 @@ struct PoolSongDetail: View {
                 .background(.primary.opacity(0.06), in: Capsule())
         }.buttonStyle(CurrentPressStyle())
     }
-    private func dimension(_ title: String, _ value: String) -> some View {
+    private func field(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
+            Text(value).font(CurrentTheme.TypeScale.body)
+        }
+    }
+    private func fact(_ title: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title).foregroundStyle(CurrentTheme.muted)
             Spacer()
-            Text(value).multilineTextAlignment(.trailing).monospacedDigit()
+            Text(value).multilineTextAlignment(.trailing)
         }.font(CurrentTheme.TypeScale.secondary)
     }
 }
