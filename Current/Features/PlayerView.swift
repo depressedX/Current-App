@@ -7,6 +7,36 @@ struct PlayerView: View {
     @State private var recentFeedback: FeedbackTarget?
     @State private var showQueue = false
     @State private var showTempo = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var toolsExpanded = false
+    @GestureState(resetTransaction: Transaction(animation: .timingCurve(0.16, 1, 0.3, 1, duration: 0.36)))
+    private var toolsDrag: CGFloat = 0
+    @GestureState private var gestureOwnsTools = false
+    private var toolsProgress: CGFloat {
+        min(1, max(0, (toolsExpanded ? 1 : 0) - toolsDrag / 120))
+    }
+    private func revealTools(_ expanded: Bool) {
+        withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .timingCurve(0.16, 1, 0.3, 1, duration: expanded ? 0.36 : 0.27)) {
+            toolsExpanded = expanded
+        }
+    }
+    private var toolsGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .updating($gestureOwnsTools) { _, state, _ in
+                // Keep this drag assigned to the tools until the finger lifts.
+                state = state || toolsExpanded
+            }
+            .updating($toolsDrag) { value, state, _ in
+                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                state = value.translation.height
+            }
+            .onEnded { value in
+                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                let projected = value.predictedEndTranslation.height
+                if value.translation.height < -35 || projected < -90 { revealTools(true) }
+                else if value.translation.height > 35 || projected > 90 { revealTools(false) }
+            }
+    }
     var body: some View {
         GeometryReader { geo in
             let spacing: CGFloat = geo.size.height < 650 ? 8 : 16
@@ -14,7 +44,9 @@ struct PlayerView: View {
                 if let track = store.currentTrack {
                     VStack(spacing: spacing) {
                         HStack {
-                            Button { dismiss() } label: { Image(systemName: "chevron.down").frame(width: 44, height: 44) }.accessibilityLabel("收起播放器")
+                            Button {
+                                if toolsExpanded { revealTools(false) } else { dismiss() }
+                            } label: { Image(systemName: "chevron.down").frame(width: 44, height: 44) }.accessibilityLabel(toolsExpanded ? "收起更多操作" : "收起播放器")
                             Spacer()
                             VStack(spacing: 4) {
                                 Text("正在播放").font(CurrentTheme.TypeScale.caption).foregroundStyle(CurrentTheme.muted)
@@ -26,11 +58,15 @@ struct PlayerView: View {
                         // Artwork uses the height left after the controls are measured.
                         // Short screens and feedback messages shrink the cover, never scroll the page.
                         GeometryReader { artwork in
-                            let side = max(0, min(320, min(artwork.size.width, artwork.size.height)))
+                            let side = max(0, min(320 - (reduceMotion ? 0 : 48 * toolsProgress), min(artwork.size.width, artwork.size.height)))
                             Artwork(track: track, radius: CurrentTheme.Radius.card, pixels: 768)
                                 .frame(width: side, height: side)
                                 .shadow(color: .black.opacity(0.10), radius: 18, y: 8)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .contentShape(Rectangle())
+                        .accessibilityAction(named: toolsExpanded ? "收起更多操作" : "展开更多操作") {
+                            revealTools(!toolsExpanded)
                         }
                         .frame(minHeight: 0)
                         .layoutPriority(-1)
@@ -58,16 +94,14 @@ struct PlayerView: View {
                                     Circle().fill(.primary).frame(width: 64, height: 64)
                                     Image(systemName: store.player.playing ? "pause.fill" : "play.fill")
                                         .font(CurrentTheme.Icon.play).foregroundStyle(CurrentTheme.background)
+                                        .contentTransition(.identity)
+                                        .animation(nil, value: store.player.playing)
                                     if store.player.showLoading {
                                         ProgressView().tint(CurrentTheme.accent).offset(x: 44)
                                     }
                                 }
                             }
                             .buttonStyle(.plain)
-                            .transaction { transaction in
-                                transaction.animation = nil
-                                transaction.disablesAnimations = true
-                            }
                             .accessibilityLabel(store.player.playing ? "暂停" : "播放").accessibilityIdentifier("playerToggle")
                             Spacer(minLength: 4)
                             Button { store.next() } label: { Image(systemName: "forward.end.fill").font(CurrentTheme.Icon.control).frame(width: 48, height: 48) }
@@ -78,33 +112,61 @@ struct PlayerView: View {
                                     .frame(width: 44, height: 44)
                             }.accessibilityLabel("播放队列")
                         }.foregroundStyle(.primary)
-                        PlaybackTempoButton(player: store.player) { showTempo = true }
                         if let error = store.player.error {
                             Text(error).font(CurrentTheme.TypeScale.secondary).foregroundStyle(.orange).multilineTextAlignment(.center)
                                 .lineLimit(2)
                         }
                         RecommendationContinuationView()
-                        HStack(spacing: 0) {
-                            Spacer(minLength: 0)
-                            FeedbackChoiceButton(title: "不合适", symbol: "hand.thumbsdown") {
-                                let prompt = store.activePrompt
-                                let id = store.record(.notNow, track: track, prompt: prompt)
-                                recentFeedback = FeedbackTarget(id: id, track: track, prompt: prompt)
+                        VStack(spacing: 0) {
+                            Button { revealTools(!toolsExpanded) } label: {
+                                Capsule().fill(CurrentTheme.muted.opacity(0.45))
+                                    .frame(width: 28, height: 4)
+                                    .frame(maxWidth: .infinity).frame(height: 28)
+                                    .contentShape(Rectangle())
                             }
-                            .accessibilityHint("跳过这首，仅调整此刻偏好，可撤销或修改范围")
-                            .accessibilityIdentifier("openFeedback")
-                            Spacer(minLength: 0)
-                            FeedbackChoiceButton(title: store.liked(track) ? "已喜欢" : "喜欢", symbol: store.liked(track) ? "heart.fill" : "heart",
-                                                 selected: store.liked(track)) {
-                                guard !store.liked(track) else { return }
-                                store.record(.fits, track: track)
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(toolsExpanded ? "收起更多操作" : "展开更多操作")
+                            .accessibilityHint("也可在封面上滑或下滑")
+                            .accessibilityIdentifier("playerToolsToggle")
+                            HStack(spacing: 0) {
+                                PlayerFeedbackButton(title: store.player.tempo.enabled ? PlaybackTempo.label(store.player.tempo.targetBPM) : "BPM",
+                                                     symbol: "speedometer", selected: store.player.tempo.enabled) { showTempo = true }
+                                    .accessibilityLabel("播放速度")
+                                    .accessibilityValue(store.player.tempo.enabled ? "\(PlaybackTempo.label(store.player.tempo.targetBPM)) BPM" : "原速")
+                                    .accessibilityIdentifier("playbackTempo")
+                                    .frame(maxWidth: .infinity)
+                                    .modifier(PlayerToolRipple(progress: toolsProgress, direction: -1,
+                                                               expanded: toolsExpanded, reduceMotion: reduceMotion))
+                                PlayerFeedbackButton(title: "不合适", symbol: "hand.thumbsdown") {
+                                    let prompt = store.activePrompt
+                                    let id = store.record(.notNow, track: track, prompt: prompt)
+                                    recentFeedback = FeedbackTarget(id: id, track: track, prompt: prompt)
+                                }
+                                .accessibilityHint("跳过这首，仅调整此刻偏好，可撤销或修改范围")
+                                .accessibilityIdentifier("openFeedback")
+                                .frame(maxWidth: .infinity)
+                                .modifier(PlayerToolRipple(progress: toolsProgress, direction: 0,
+                                                           expanded: toolsExpanded, reduceMotion: reduceMotion))
+                                PlayerFeedbackButton(title: store.liked(track) ? "已喜欢" : "喜欢", symbol: store.liked(track) ? "heart.fill" : "heart",
+                                                     selected: store.liked(track)) {
+                                    guard !store.liked(track) else { return }
+                                    store.record(.fits, track: track)
+                                }
+                                .accessibilityLabel(store.liked(track) ? "已喜欢，仅用于 Current 推荐" : "喜欢，仅用于 Current 推荐")
+                                .accessibilityHint("记录正向偏好，不同步网易云收藏")
+                                .accessibilityAddTraits(store.liked(track) ? .isSelected : [])
+                                .accessibilityIdentifier("likeTrack")
+                                .frame(maxWidth: .infinity)
+                                .modifier(PlayerToolRipple(progress: toolsProgress, direction: 1,
+                                                           expanded: toolsExpanded, reduceMotion: reduceMotion))
                             }
-                            .accessibilityLabel(store.liked(track) ? "已喜欢，仅用于 Current 推荐" : "喜欢，仅用于 Current 推荐")
-                            .accessibilityHint("记录正向偏好，不同步网易云收藏")
-                            .accessibilityAddTraits(store.liked(track) ? .isSelected : [])
-                            .accessibilityIdentifier("likeTrack")
-                            Spacer(minLength: 0)
+                            .frame(height: 56)
+                            .frame(height: 56 * toolsProgress, alignment: .top)
+                            .clipped()
+                            .allowsHitTesting(toolsExpanded && toolsDrag == 0)
+                            .accessibilityHidden(!toolsExpanded)
                         }
+                        .sensoryFeedback(.selection, trigger: toolsExpanded)
                         .sensoryFeedback(.success, trigger: store.liked(track))
                     }
                     .buttonStyle(CurrentPressStyle())
@@ -124,6 +186,8 @@ struct PlayerView: View {
                 }.ignoresSafeArea()
             }
         }
+        .simultaneousGesture(toolsGesture)
+        .interactiveDismissDisabled(toolsExpanded || gestureOwnsTools)
         .safeAreaInset(edge: .bottom) {
             if let target = recentFeedback {
                 HStack(spacing: 12) {
@@ -143,7 +207,7 @@ struct PlayerView: View {
                 }
             }
         }
-        .onChange(of: store.scope) { _, _ in recentFeedback = nil; feedbackTarget = nil; showTempo = false }
+        .onChange(of: store.scope) { _, _ in recentFeedback = nil; feedbackTarget = nil; showTempo = false; toolsExpanded = false }
         .overlay {
             if showTempo {
                 ZStack(alignment: .bottom) {
@@ -167,6 +231,59 @@ struct PlayerView: View {
                     .toolbar { Button("完成") { showQueue = false } }
             }.environmentObject(store)
         }
+    }
+}
+
+/// Local animation only: the surrounding layout always uses a bounded ease-out curve.
+private struct PlayerToolRipple: ViewModifier {
+    let progress: CGFloat
+    let direction: CGFloat
+    let expanded: Bool
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(PlayerToolRippleFrame(progress: progress, direction: direction, reduceMotion: reduceMotion))
+            .animation(reduceMotion ? .easeOut(duration: 0.18) :
+                .interpolatingSpring(mass: 1, stiffness: 330, damping: expanded ? 18.5 : 32)
+                    .delay(expanded && direction != 0 ? 0.045 : 0), value: progress)
+    }
+}
+
+private struct PlayerToolRippleFrame: AnimatableModifier {
+    var progress: CGFloat
+    let direction: CGFloat
+    let reduceMotion: Bool
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+    func body(content: Content) -> some View {
+        let visible = min(1, max(0, progress))
+        content
+            .opacity(Double(min(1, max(0, (visible - 0.08) / 0.75))))
+            .scaleEffect(reduceMotion ? 1 : 1 - 0.055 * (1 - visible))
+            .offset(x: reduceMotion ? 0 : direction * 10 * (1 - progress),
+                    y: reduceMotion ? 0 : 42 * (1 - progress))
+    }
+}
+
+private struct PlayerFeedbackButton: View {
+    let title: String
+    let symbol: String
+    var selected = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 20))
+                Text(title).font(CurrentTheme.TypeScale.caption).lineLimit(1)
+            }
+            .foregroundStyle(selected ? CurrentTheme.accent : .primary)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CurrentPressStyle())
     }
 }
 
