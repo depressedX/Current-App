@@ -222,6 +222,11 @@ final class PlaybackController: ObservableObject {
             self.showLoading = true
         }
     }
+    func updateUpcomingTrack(_ next: Track?) {
+        cancelPrefetch()
+        upcoming = next
+        if playing { prefetchNextIfNeeded() }
+    }
     private func prefetchNextIfNeeded() {
         guard let next = upcoming, !next.isDemo, !ProcessInfo.processInfo.isLowPowerModeEnabled,
               prefetchTrackID != next.id, let resolveURL else { return }

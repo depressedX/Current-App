@@ -405,7 +405,8 @@ struct QueueSection: View {
             }
             RecommendationContinuationView()
             LazyVStack(spacing: CurrentTheme.Space.tiny) {
-                ForEach(Array(store.queue.enumerated()), id: \.offset) { index, track in
+                ForEach(store.queue.indices, id: \.self) { index in
+                    let track = store.queue[index]
                     TrackRow(track: track, active: store.currentIndex == index, liked: store.liked(track)) {
                         store.play(at: index); showPlayer = true
                     }
@@ -529,5 +530,29 @@ private struct SessionRow: View {
         }.buttonStyle(CurrentRowStyle())
         .accessibilityLabel("\(session.prompt)，\(session.tracks.count) 首")
         .accessibilityHint("替换当前歌单并开始播放")
+    }
+}
+
+struct PlaybackOrderControl: View {
+    @EnvironmentObject private var store: AppStore
+    var body: some View {
+        Button { store.setShuffleEnabled(!store.shuffleEnabled) } label: {
+            Image(systemName: "shuffle")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(store.shuffleEnabled ? CurrentTheme.accent : CurrentTheme.muted)
+                .frame(width: 44, height: 44)
+                .overlay(alignment: .bottom) {
+                    Circle().fill(CurrentTheme.accent)
+                        .frame(width: 4, height: 4)
+                        .padding(.bottom, 2)
+                        .opacity(store.shuffleEnabled ? 1 : 0)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("播放模式")
+        .accessibilityValue(store.shuffleEnabled ? "随机播放" : "顺序播放")
+        .accessibilityHint(store.shuffleEnabled ? "切换到顺序播放" : "切换到随机播放")
+        .accessibilityIdentifier("playbackOrderToggle")
     }
 }

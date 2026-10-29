@@ -11,6 +11,7 @@ import Combine
     var onPrevious: (() -> Void)?
     var onLike: (() -> Void)?
     func load(_ song: Track, next: Track? = nil, resolve: @escaping (Track) async throws -> URL) async { loadedTrack = song; loadCount += 1; playing = true }
+    func updateUpcomingTrack(_ next: Track?) {}
     func pause() { playing = false }
     func seek(_ time: Double) { position = time }
     func stop() { playing = false; position = 0 }
@@ -98,6 +99,24 @@ import Combine
         preview.playGeneratedPlaylist()
         precondition(preview.queue.isEmpty)
         print("PASS generated playlist preview: no autoplay/toast, unchanged active audio and feedback context, explicit row/all playback, empty/invalid guards, persistence, repeat, cancellation and logout cleanup")
+
+        store.replay(initial, startingAt: 7)
+        while store.player.loadedTrack != ranked[7] { await Task.yield() }
+        let beforeShuffle = store.player.loadCount
+        store.setShuffleEnabled(true)
+        let order = store.playbackOrder
+        precondition(order.first == 7 && Set(order) == Set(ranked.indices) && order.count == ranked.count)
+        precondition(store.currentIndex == 7 && store.player.loadCount == beforeShuffle)
+        store.next(); precondition(store.currentIndex == order[1])
+        store.player.position = 0
+        store.previous(); precondition(store.currentIndex == 7)
+        for expected in order.dropFirst() { store.next(); precondition(store.currentIndex == expected) }
+        store.next(); precondition(store.queueEnded)
+        store.continueWithRepeats(); precondition(!store.queueEnded && store.queue == ranked)
+        store.setShuffleEnabled(false)
+        precondition(store.playbackOrder == Array(ranked.indices))
+        store.play(at: 7); store.next(); precondition(store.currentIndex == 8)
+        print("PASS shuffle: stable permutation, current track preserved without reload, next/previous, finite end, repeat and sequential restoration")
 
         let legacy = ListeningSession(prompt: "legacy", tracks: [ranked[0]], createdAt: Date(), listenerID: nil)
         store.replay(legacy); store.player.onNext?(); store.continueWithRepeats()

@@ -21,7 +21,7 @@ struct PlayerView: View {
                                 Text(store.activePrompt).font(CurrentTheme.TypeScale.secondary).lineLimit(1)
                             }
                             Spacer()
-                            Button { showQueue = true } label: { Image(systemName: "list.bullet").frame(width: 44, height: 44) }.accessibilityLabel("播放队列")
+                            Color.clear.frame(width: 44, height: 44).accessibilityHidden(true)
                         }.foregroundStyle(.primary)
                         // Artwork uses the height left after the controls are measured.
                         // Short screens and feedback messages shrink the cover, never scroll the page.
@@ -45,8 +45,11 @@ struct PlayerView: View {
                         }.fixedSize(horizontal: false, vertical: true)
                         PlaybackScrubber(player: store.player)
                             .id(track.id)
-                        HStack(spacing: 40) {
+                        HStack(spacing: 0) {
+                            PlaybackOrderControl()
+                            Spacer(minLength: 4)
                             Button { store.previous() } label: { Image(systemName: "backward.end.fill").font(CurrentTheme.Icon.control).frame(width: 48, height: 48) }.accessibilityLabel("上一首")
+                            Spacer(minLength: 4)
                             Button {
                                 if store.player.error != nil { store.play(at: store.currentIndex) }
                                 else { store.player.toggle() }
@@ -66,8 +69,14 @@ struct PlayerView: View {
                                 transaction.disablesAnimations = true
                             }
                             .accessibilityLabel(store.player.playing ? "暂停" : "播放").accessibilityIdentifier("playerToggle")
+                            Spacer(minLength: 4)
                             Button { store.next() } label: { Image(systemName: "forward.end.fill").font(CurrentTheme.Icon.control).frame(width: 48, height: 48) }
                                 .accessibilityLabel("下一首").accessibilityIdentifier("playerNext")
+                            Spacer(minLength: 4)
+                            Button { showQueue = true } label: {
+                                Image(systemName: "list.bullet").font(.system(size: 20, weight: .medium))
+                                    .frame(width: 44, height: 44)
+                            }.accessibilityLabel("播放队列")
                         }.foregroundStyle(.primary)
                         PlaybackTempoButton(player: store.player) { showTempo = true }
                         if let error = store.player.error {

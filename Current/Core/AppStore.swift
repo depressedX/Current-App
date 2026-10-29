@@ -18,7 +18,29 @@ final class AppStore: ObservableObject {
     @Published private(set) var playlists: [UserPlaylist] = []
     @Published private(set) var libraryTracks: [Track] = []
     @Published var selectedPlaylistID: Int?
-    @Published private(set) var queue: [Track] = []
+    @Published private(set) var queue: [Track] = [] {
+        didSet { rebuildPlaybackOrder(keeping: nil) }
+    }
+    @Published private(set) var shuffleEnabled = false
+    @Published private(set) var playbackOrder: [Int] = []
+
+    func setShuffleEnabled(_ enabled: Bool) {
+        guard shuffleEnabled != enabled else { return }
+        shuffleEnabled = enabled
+        rebuildPlaybackOrder(keeping: currentIndex)
+        player.updateUpcomingTrack(nextPlaybackIndex.map { queue[$0] })
+    }
+    private func rebuildPlaybackOrder(keeping index: Int?) {
+        let indices = Array(queue.indices)
+        if shuffleEnabled {
+            let rest = indices.filter { $0 != index }.shuffled()
+            playbackOrder = index.flatMap { queue.indices.contains($0) ? [$0] + rest : nil } ?? rest
+        } else { playbackOrder = indices }
+    }
+    private var nextPlaybackIndex: Int? {
+        guard let offset = playbackOrder.firstIndex(of: currentIndex) else { return nil }
+        return playbackOrder.dropFirst(offset + 1).first { pool.isAvailable(queue[$0]) }
+    }
     @Published private(set) var currentIndex = 0
     @Published private(set) var activePrompt = ""
     @Published private(set) var sessions: [ListeningSession] = []
@@ -258,6 +280,7 @@ final class AppStore: ObservableObject {
         clearRecommendation()
         activePrompt = "曲库筛选"
         queue = tracks
+        rebuildPlaybackOrder(keeping: 0)
         message = "已替换播放列表，共 \(tracks.count) 首。"; error = nil
         play(at: 0)
     }
@@ -272,6 +295,7 @@ final class AppStore: ObservableObject {
         activePrompt = "歌词：" + query
         message = "按歌词匹配的候选"; error = nil
         queue = playable.map(\.track)
+        rebuildPlaybackOrder(keeping: playableIndex)
         play(at: playableIndex)
     }
     func replay(_ session: ListeningSession, startingAt index: Int = 0) {
@@ -287,6 +311,7 @@ final class AppStore: ObservableObject {
         activeRecommendation = session
         canRepeatRecommendation = session.allowsRepeat == true || session.recommendationQuery != nil || session.rankedCandidates != nil
         activePrompt = session.prompt; queue = tracks
+        rebuildPlaybackOrder(keeping: playableIndex)
         if let index = sessions.firstIndex(where: { $0.id == session.id && $0.listenerID == scope }),
            sessions[index].rankedCandidates != nil {
             var full = ListeningSession(prompt: session.prompt, tracks: tracks, createdAt: session.createdAt,
@@ -298,7 +323,8 @@ final class AppStore: ObservableObject {
     func play(at index: Int) {
         guard queue.indices.contains(index) else { return }
         guard pool.isAvailable(queue[index]) else {
-            if let next = queue.indices.dropFirst(index + 1).first(where: { pool.isAvailable(queue[$0]) }) { play(at: next) }
+            if let offset = playbackOrder.firstIndex(of: index),
+               let next = playbackOrder.dropFirst(offset + 1).first(where: { pool.isAvailable(queue[$0]) }) { play(at: next) }
             else { player.pause(); queueEnded = true; message = "其余歌曲音源不可用，已跳过。" }
             return
         }
@@ -306,7 +332,7 @@ final class AppStore: ObservableObject {
         queueEnded = false
         let song = queue[index]
         playbackTask?.cancel()
-        let next = queue.indices.contains(index + 1) ? queue[index + 1] : nil
+        let next = nextPlaybackIndex.map { queue[$0] }
         let ticket = accountEpoch, account = pool.account
         playbackTask = Task {
             await player.load(song, next: next) { [self] track in
@@ -323,7 +349,7 @@ final class AppStore: ObservableObject {
     }
     func next() {
         guard !queue.isEmpty else { return }
-        if currentIndex + 1 < queue.count { play(at: currentIndex + 1) }
+        if let next = nextPlaybackIndex { play(at: next) }
         else {
             player.pause(); queueEnded = true
             message = !canRepeatRecommendation ? "这一轮听完了，再写一句话，开启下一段。" : "本歌单已听完，可再听一遍，或写下新的需求。"
@@ -331,7 +357,8 @@ final class AppStore: ObservableObject {
     }
     func continueWithRepeats() {
         guard queueEnded, canRepeatRecommendation, !queue.isEmpty else { return }
-        play(at: 0)
+        rebuildPlaybackOrder(keeping: nil)
+        if let first = playbackOrder.first { play(at: first) }
     }
     private func clearRecommendation() {
         activeRecommendation = nil
@@ -340,7 +367,10 @@ final class AppStore: ObservableObject {
     func previous() {
         if queueEnded { play(at: currentIndex) }
         else if player.position > 3 { player.seek(0) }
-        else if currentIndex > 0 { play(at: currentIndex - 1) }
+        else if let offset = playbackOrder.firstIndex(of: currentIndex),
+                let previous = playbackOrder.prefix(offset).last(where: { pool.isAvailable(queue[$0]) }) {
+            play(at: previous)
+        }
     }
     @discardableResult
     func record(_ kind: FeedbackKind, track: Track, prompt: String? = nil) -> UUID {
