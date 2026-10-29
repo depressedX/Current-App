@@ -7,7 +7,7 @@ struct PlaybackTempoButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: "speedometer")
-                Text(player.tempo.enabled ? "\(PlaybackTempo.label(player.tempo.targetBPM)) BPM" : "BPM")
+                Text(player.tempo.enabled ? PlaybackTempo.label(player.tempo.targetBPM) : "BPM")
             }
             .font(CurrentTheme.TypeScale.emphasis)
             .foregroundStyle(player.tempo.enabled ? CurrentTheme.accent : Color.primary)
@@ -15,17 +15,19 @@ struct PlaybackTempoButton: View {
             .background(CurrentTheme.surface, in: Capsule())
         }
         .accessibilityLabel("播放速度")
+        .accessibilityValue(player.tempo.enabled ? "\(PlaybackTempo.label(player.tempo.targetBPM)) BPM" : "原速")
         .accessibilityIdentifier("playbackTempo")
     }
 }
 
 struct PlaybackTempoView: View {
     @ObservedObject var player: PlaybackController
+    @GestureState private var previewBPM: Double?
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("播放速度").font(CurrentTheme.TypeScale.body).foregroundStyle(.secondary)
-                Text(player.tempo.displayBPM.map { "\(PlaybackTempo.label($0)) BPM" } ?? "— BPM")
+                Text((previewBPM ?? player.tempo.displayBPM).map { "\(PlaybackTempo.label($0)) BPM" } ?? "— BPM")
                     .font(.system(.title3, design: .rounded).weight(.semibold)).monospacedDigit()
                     .lineLimit(1).minimumScaleFactor(0.8)
                     .accessibilityIdentifier("tempoTarget")
@@ -44,11 +46,16 @@ struct PlaybackTempoView: View {
             }
             .frame(minHeight: 44)
             BPMRuler(value: Binding(get: { player.tempo.displayBPM ?? player.tempo.targetBPM }, set: player.setTargetBPM),
-                     original: player.tempo.originalBPM, enabled: player.tempo.enabled)
-            if let issue = player.tempo.issue {
+                     original: player.tempo.originalBPM, enabled: player.tempo.enabled, preview: $previewBPM,
+                     onEditingBegan: player.beginTempoEditing, onCommit: player.endTempoEditing)
+            if let issue = player.tempoAdjustmentIssue ?? player.tempo.issue {
                 Text(issue).font(CurrentTheme.TypeScale.caption).foregroundStyle(.secondary)
             }
         }
+        .onChange(of: previewBPM != nil) { _, active in
+            if !active { player.cancelTempoEditing() }
+        }
+        .onDisappear { player.cancelTempoEditing() }
         .padding(.horizontal, 24).padding(.vertical, 18)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay {
@@ -65,6 +72,10 @@ struct BPMRuler: View {
     @Binding var value: Double
     let original: Double?
     let enabled: Bool
+    let preview: GestureState<Double?>
+    let onEditingBegan: () -> Void
+    let onCommit: (Double) -> Void
+    private var displayedValue: Double { preview.wrappedValue ?? value }
     private let inset: CGFloat = 12
     private func fraction(_ bpm: Double) -> Double {
         (bpm - PlaybackTempo.targetRange.lowerBound) / (PlaybackTempo.targetRange.upperBound - PlaybackTempo.targetRange.lowerBound)
@@ -88,18 +99,26 @@ struct BPMRuler: View {
                     Capsule().fill(CurrentTheme.accent).frame(width: 3, height: 30)
                         .position(x: inset + fraction(original) * width, y: 23)
                 }
-                if enabled {
+                if enabled || preview.wrappedValue != nil {
                     Capsule().fill(Color.primary).frame(width: 5, height: 34)
-                        .position(x: inset + min(1, max(0, fraction(value))) * width, y: 23)
+                        .position(x: inset + min(1, max(0, fraction(displayedValue))) * width, y: 23)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { event in
-                guard original != nil else { return }
-                let position = min(1, max(0, (event.location.x - inset) / width))
-                value = PlaybackTempo.snappedTarget(40 + position * 160)
-            })
+            .gesture(DragGesture(minimumDistance: 0)
+                .updating(preview) { event, draft, _ in
+                    guard original != nil else { return }
+                    draft = target(at: event.location.x, width: width)
+                }
+                .onChanged { _ in
+                    guard original != nil else { return }
+                    onEditingBegan()
+                }
+                .onEnded { event in
+                    guard original != nil else { return }
+                    onCommit(target(at: event.location.x, width: width))
+                })
             .opacity(original == nil ? 0.4 : 1)
         }
         .frame(height: 76)
@@ -115,10 +134,15 @@ struct BPMRuler: View {
             }
         }
         .accessibilityIdentifier("bpmRuler")
-        .sensoryFeedback(.selection, trigger: value)
+        .sensoryFeedback(.selection, trigger: displayedValue)
+    }
+    private func target(at x: CGFloat, width: CGFloat) -> Double {
+        let position = min(1, max(0, (x - inset) / width))
+        return PlaybackTempo.snappedTarget(PlaybackTempo.targetRange.lowerBound + position *
+            (PlaybackTempo.targetRange.upperBound - PlaybackTempo.targetRange.lowerBound))
     }
     private var valueDescription: String {
         guard let original else { return "BPM 未识别" }
-        return "\(PlaybackTempo.label(value)) BPM，原曲 \(PlaybackTempo.label(original)) BPM"
+        return "\(PlaybackTempo.label(displayedValue)) BPM，原曲 \(PlaybackTempo.label(original)) BPM"
     }
 }

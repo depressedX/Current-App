@@ -13,6 +13,125 @@ final class PlaybackTempoTests: XCTestCase {
     @MainActor private func audio() throws -> URL {
         try XCTUnwrap(Bundle.main.url(forResource: "demo-0", withExtension: "wav"))
     }
+    @MainActor func testDragCancelsPendingHandoffAndReleaseFadesIntoPreparedAudio() async throws {
+        let engine = TempoRecordingPlayer()
+        let controller = PlaybackController(player: engine, systemIntegration: false, tempoDefaults: defaults())
+        defer { controller.stop() }
+        var replacements: [TempoRecordingPlayer] = []
+        controller.makeTempoStandby = { item in
+            let next = TempoRecordingPlayer()
+            next.replaceCurrentItem(with: TempoRecordingItem(asset: item.asset))
+            replacements.append(next)
+            return next
+        }
+        controller.originalBPMForTrack = { _ in 120 }
+        let url = try audio()
+        await controller.load(fixture(1)) { _ in url }
+        let item = engine.currentItem
+        engine.resetRecording()
+
+        controller.beginTempoEditing()
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertTrue(replacements.isEmpty, "Holding the ruler must not prepare or change speed")
+        XCTAssertTrue(engine.rateWrites.isEmpty)
+        XCTAssertEqual(engine.pauseCount, 0)
+        controller.endTempoEditing(at: 100)
+        XCTAssertEqual(engine.rate, 1, "Keep the source running while preparing the new rate")
+        XCTAssertTrue(engine.currentItem === item)
+        XCTAssertEqual(replacements.count, 1)
+        controller.beginTempoEditing()
+        try await Task.sleep(for: .milliseconds(450))
+        XCTAssertTrue(engine.rateWrites.isEmpty, "A second drag cancels the earlier release")
+        XCTAssertEqual(engine.pauseCount, 0)
+        XCTAssertEqual(engine.volume, 1)
+        controller.endTempoEditing(at: 90)
+        try await Task.sleep(for: .milliseconds(650))
+        let next = try XCTUnwrap(replacements.last)
+        XCTAssertEqual(next.rate, 0.75)
+        XCTAssertEqual(next.volume, 1)
+        XCTAssertEqual(engine.pauseCount, 1, "Retire the source only after the replacement is audible")
+        XCTAssertEqual(next.currentItem?.audioTimePitchAlgorithm, .spectral)
+        XCTAssertNil(controller.tempoAdjustmentIssue)
+        controller.setTempoEnabled(false)
+        XCTAssertEqual(next.rate, 0.75, "Reset also keeps the audible pipeline running during preparation")
+        try await Task.sleep(for: .milliseconds(650))
+        XCTAssertEqual(replacements.last?.rate, 1)
+        XCTAssertEqual(replacements.last?.volume, 1)
+    }
+
+    @MainActor func testFailedPreparationLeavesTheSourceUntouched() async throws {
+        let engine = TempoRecordingPlayer()
+        let controller = PlaybackController(player: engine, systemIntegration: false, tempoDefaults: defaults())
+        defer { controller.stop() }
+        controller.makeTempoStandby = { item in
+            let next = TempoRecordingPlayer()
+            next.canSeek = false
+            next.replaceCurrentItem(with: TempoRecordingItem(asset: item.asset))
+            return next
+        }
+        controller.originalBPMForTrack = { _ in 120 }
+        let url = try audio()
+        await controller.load(fixture(1)) { _ in url }
+        engine.resetRecording()
+        controller.setTargetBPM(90)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(engine.rateWrites.isEmpty)
+        XCTAssertEqual(engine.pauseCount, 0)
+        XCTAssertEqual(engine.volume, 1)
+        XCTAssertNotNil(controller.tempoAdjustmentIssue)
+        XCTAssertFalse(controller.tempo.enabled)
+    }
+
+    @MainActor func testUnsupportedReleaseAndCancelledDragKeepAudioPlaying() async throws {
+        let engine = TempoRecordingPlayer()
+        let controller = PlaybackController(player: engine, systemIntegration: false, tempoDefaults: defaults())
+        defer { controller.stop() }
+        controller.originalBPMForTrack = { _ in 120 }
+        let url = try audio()
+        await controller.load(fixture(1)) { _ in url }
+        engine.resetRecording()
+        controller.beginTempoEditing()
+        controller.endTempoEditing(at: 40)
+        XCTAssertEqual(engine.rate, 1)
+        XCTAssertEqual(engine.pauseCount, 0)
+        XCTAssertFalse(controller.tempo.enabled)
+        XCTAssertNotNil(controller.tempoAdjustmentIssue)
+        controller.beginTempoEditing()
+        controller.cancelTempoEditing()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(engine.rateWrites.isEmpty)
+        XCTAssertEqual(engine.pauseCount, 0)
+    }
+
+    @MainActor func testPendingHandoffCannotRestartPausedOrStoppedPlayback() async throws {
+        let engine = TempoRecordingPlayer()
+        let controller = PlaybackController(player: engine, systemIntegration: false, tempoDefaults: defaults())
+        defer { controller.stop() }
+        controller.makeTempoStandby = { item in
+            let next = TempoRecordingPlayer()
+            next.replaceCurrentItem(with: TempoRecordingItem(asset: item.asset))
+            return next
+        }
+        controller.originalBPMForTrack = { _ in 120 }
+        let url = try audio()
+        await controller.load(fixture(1)) { _ in url }
+        controller.setTargetBPM(90)
+        controller.pause()
+        engine.resetRecording()
+        try await Task.sleep(for: .milliseconds(450))
+        XCTAssertTrue(engine.rateWrites.isEmpty)
+        XCTAssertEqual(engine.rate, 0)
+        controller.resume()
+        XCTAssertEqual(engine.rate, 0.75)
+        controller.setTargetBPM(100)
+        controller.stop()
+        engine.resetRecording()
+        try await Task.sleep(for: .milliseconds(450))
+        XCTAssertTrue(engine.rateWrites.isEmpty)
+        XCTAssertEqual(engine.rate, 0)
+        XCTAssertNil(engine.currentItem)
+    }
+
     @MainActor func testTargetSurvivesTrackChangesAndPauseResumeWithoutChangingPitch() async throws {
         let engine = AVPlayer()
         let controller = PlaybackController(player: engine, systemIntegration: false, tempoDefaults: defaults())
@@ -56,6 +175,7 @@ final class PlaybackTempoTests: XCTestCase {
         controller.refreshOriginalBPM()
         XCTAssertNil(controller.tempo.issue)
         XCTAssertEqual(engine.defaultRate, Float(100.0 / 123), accuracy: 0.0001)
+        controller.pause()
         controller.setTempoEnabled(false)
         XCTAssertEqual(controller.tempo.displayBPM, 123, "Reset shows the exact original, not the saved target or nearest tick")
         XCTAssertEqual(engine.defaultRate, 1)
@@ -109,4 +229,34 @@ final class PlaybackTempoTests: XCTestCase {
         XCTAssertEqual(engine.defaultRate, 1)
         XCTAssertNil(second.tempo.issue)
     }
+}
+
+/// Records transport commands without a decoder or output device; acoustic continuity needs device QA.
+private final class TempoRecordingPlayer: AVPlayer {
+    var canSeek = true
+    private var recordedItem: AVPlayerItem?
+    private var currentRate: Float = 0
+    private(set) var rateWrites: [Float] = []
+    private(set) var playCount = 0
+    private(set) var pauseCount = 0
+    override var currentItem: AVPlayerItem? { recordedItem }
+    override var status: AVPlayer.Status { .readyToPlay }
+    override func currentTime() -> CMTime { .zero }
+    override func seek(to time: CMTime, toleranceBefore: CMTime, toleranceAfter: CMTime,
+                       completionHandler: (@Sendable (Bool) -> Void)?) { completionHandler?(canSeek) }
+    override func preroll(atRate rate: Float, completionHandler: (@Sendable (Bool) -> Void)?) { completionHandler?(true) }
+    override func setRate(_ rate: Float, time: CMTime, atHostTime hostClockTime: CMTime) { self.rate = rate }
+    override var rate: Float {
+        get { currentRate }
+        set { currentRate = newValue; rateWrites.append(newValue) }
+    }
+    override var timeControlStatus: AVPlayer.TimeControlStatus { currentRate > 0 ? .playing : .paused }
+    override func replaceCurrentItem(with item: AVPlayerItem?) { recordedItem = item }
+    override func play() { playCount += 1; rate = defaultRate }
+    override func pause() { pauseCount += 1; rate = 0 }
+    func resetRecording() { rateWrites = []; playCount = 0; pauseCount = 0 }
+}
+
+private final class TempoRecordingItem: AVPlayerItem {
+    override var isPlaybackLikelyToKeepUp: Bool { true }
 }
