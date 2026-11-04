@@ -22,6 +22,8 @@ final class PlaybackController: ObservableObject {
     private var editingTempo = false
     private var renderedTempo = PlaybackTempo()
     @Published private(set) var tempoAdjustmentIssue: String?
+    private static let enabledKey = "current.playback.tempo-enabled"
+    private var restoredSource = false
     private static let targetKey = "current.playback.target-bpm"
     private var player: AVPlayer
     private let systemIntegration: Bool
@@ -61,6 +63,8 @@ final class PlaybackController: ObservableObject {
         if let last = tempoDefaults.object(forKey: Self.targetKey) as? Double {
             tempo.targetBPM = PlaybackTempo.snappedTarget(last)
         }
+        tempo.enabled = tempoDefaults.bool(forKey: Self.enabledKey)
+        renderedTempo = tempo
         observeTransport()
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             Task { @MainActor in
@@ -132,6 +136,7 @@ final class PlaybackController: ObservableObject {
     // The resolver is injectable so a paused in-flight request can be tested without a server.
     func load(_ song: Track, next: Track? = nil, resolve: @escaping (Track) async throws -> URL) async {
         guard !Task.isCancelled else { return }
+        restoredSource = false
         let ticket = UUID(); generation = ticket
         pendingSeek = nil
         AppLog.shared.record(.playback, .started, operation: .playback, span: ticket)
@@ -191,6 +196,17 @@ final class PlaybackController: ObservableObject {
             fail(error.localizedDescription)
         }
     }
+    // Restore metadata immediately; resolve audio only after an explicit play action.
+    func restore(_ song: Track, next: Track?, resolve: @escaping (Track) async throws -> URL) {
+        stop()
+        tempo.enabled = tempoDefaults.bool(forKey: Self.enabledKey)
+        track = song; upcoming = next; resolveURL = resolve; restoredSource = true
+        tempo.originalBPM = originalBPM(for: song)
+        renderedTempo = tempo
+        duration = song.duration
+        loadArtwork(song, ticket: generation)
+        publishNowPlaying()
+    }
     func toggle() { playing ? pause() : resume() }
     func pause() {
         AppLog.shared.record(.playback, .paused, operation: .playback, span: generation)
@@ -198,6 +214,15 @@ final class PlaybackController: ObservableObject {
         playing = false; player.pause(); updateLoading(); publishNowPlaying()
     }
     func resume() {
+        if restoredSource, let track, let resolveURL {
+            let ticket = generation
+            playing = true
+            Task {
+                guard self.generation == ticket, self.playing else { return }
+                await self.load(track, next: self.upcoming, resolve: resolveURL)
+            }
+            return
+        }
         guard track != nil, error == nil else { return }
         AppLog.shared.record(.playback, .resumed, operation: .playback, span: generation)
         playing = true
@@ -302,6 +327,7 @@ final class PlaybackController: ObservableObject {
         generation = UUID(); player.pause(); player.replaceCurrentItem(with: nil)
         pendingSeek = nil
         loadingTask?.cancel(); artworkTask?.cancel(); cancelPrefetch()
+        restoredSource = false
         upcoming = nil; resolveURL = nil; artwork = nil; preparing = false; showLoading = false
         statusObservation = nil; track = nil; playing = false; loading = false
         position = 0; duration = 0; error = nil
@@ -383,6 +409,7 @@ final class PlaybackController: ObservableObject {
         tempoAdjustmentIssue = nil
         tempo = candidate
         tempoDefaults.set(tempo.targetBPM, forKey: Self.targetKey)
+        tempoDefaults.set(tempo.enabled, forKey: Self.enabledKey)
         applyTempo(deferred: true)
     }
     func refreshOriginalBPM() {

@@ -29,6 +29,7 @@ final class AppStore: ObservableObject {
         shuffleEnabled = enabled
         rebuildPlaybackOrder(keeping: currentIndex)
         player.updateUpcomingTrack(nextPlaybackIndex.map { queue[$0] })
+        persistPlayback()
     }
     private func rebuildPlaybackOrder(keeping index: Int?) {
         let indices = Array(queue.indices)
@@ -63,6 +64,8 @@ final class AppStore: ObservableObject {
     private var loadingPlaylists = false
     private var cancellables = Set<AnyCancellable>()
     private let historyURL: URL
+    private var playbackURL: URL { historyURL.deletingPathExtension().appendingPathExtension("playback.json") }
+    private var playbackAccount: String? { listener.map { "netease:\($0.id)" } ?? (demoMode ? "demo" : nil) }
     var currentTrack: Track? { queue.indices.contains(currentIndex) ? queue[currentIndex] : nil }
     var accountLabel: String { listener?.name ?? (demoMode ? "演示空间" : "尚未登录") }
     var scope: Int? { listener?.id }
@@ -154,6 +157,7 @@ final class AppStore: ObservableObject {
             let user = try await api.profile()
             guard ticket == accountEpoch else { return }
             listener = user
+            restorePlayback()
             AppLog.shared.record(.auth, .succeeded, operation: .restoreSession)
             await loadPlaylists()
         } catch CurrentError.expired {
@@ -172,13 +176,16 @@ final class AppStore: ObservableObject {
         let user = try await api.profile()
         guard ticket == accountEpoch else { throw CancellationError() }
         resetPlayback(); demoMode = false; listener = user
+        restorePlayback()
         AppLog.shared.record(.auth, .succeeded, operation: .login)
         await loadPlaylists()
     }
     func enterDemo() {
         guard listener == nil else { return }
         AppLog.shared.record(.auth, .succeeded, operation: .demo)
+        guard !demoMode else { return }
         demoMode = true; error = nil
+        restorePlayback()
     }
     func signOut() async {
         AppLog.shared.record(.auth, .started, operation: .logout)
@@ -186,6 +193,9 @@ final class AppStore: ObservableObject {
         companion.revokeAuthorization()
         #endif
         accountEpoch = UUID(); generationTask?.cancel(); playbackTask?.cancel()
+        if let account = playbackAccount {
+            var saved = readPlayback(); saved.removeValue(forKey: account); writePlayback(saved)
+        }
         resetPlayback(); listener = nil; demoMode = false
         playlists = []; libraryTracks = []; selectedPlaylistID = nil
         libraryLoading = false; error = nil
@@ -331,6 +341,7 @@ final class AppStore: ObservableObject {
         currentIndex = index
         queueEnded = false
         let song = queue[index]
+        persistPlayback()
         playbackTask?.cancel()
         let next = nextPlaybackIndex.map { queue[$0] }
         let ticket = accountEpoch, account = pool.account
@@ -401,6 +412,52 @@ final class AppStore: ObservableObject {
         generatedPlaylist = nil; generationError = nil
         cancelGeneration(); playbackTask?.cancel()
         player.stop(); queue = []; currentIndex = 0; activePrompt = ""
+        shuffleEnabled = false
+    }
+    // Separate from listening history: no position, audio URL or credentials are stored.
+    private struct PlaybackSnapshot: Codable {
+        let queue: [Track]
+        let currentIndex: Int
+        let shuffle: Bool
+        let order: [Int]
+        let prompt: String
+        let recommendation: ListeningSession?
+        let canRepeat: Bool
+    }
+    private func readPlayback() -> [String: PlaybackSnapshot] {
+        guard let data = try? Data(contentsOf: playbackURL),
+              let saved = try? JSONDecoder().decode([String: PlaybackSnapshot].self, from: data) else { return [:] }
+        return saved
+    }
+    private func writePlayback(_ saved: [String: PlaybackSnapshot]) {
+        do {
+            try JSONEncoder().encode(saved).write(to: playbackURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            AppLog.shared.record(.storage, .failed, level: .error, operation: .historySave, error: error)
+        }
+    }
+    private func persistPlayback() {
+        guard let account = playbackAccount, currentTrack != nil else { return }
+        var saved = readPlayback()
+        saved[account] = PlaybackSnapshot(queue: queue, currentIndex: currentIndex, shuffle: shuffleEnabled,
+            order: playbackOrder, prompt: activePrompt, recommendation: activeRecommendation, canRepeat: canRepeatRecommendation)
+        writePlayback(saved)
+    }
+    private func restorePlayback() {
+        guard queue.isEmpty, let account = playbackAccount, let saved = readPlayback()[account],
+              saved.queue.indices.contains(saved.currentIndex),
+              saved.order.count == saved.queue.count, Set(saved.order) == Set(saved.queue.indices),
+              saved.recommendation == nil || saved.recommendation?.listenerID == scope else { return }
+        shuffleEnabled = saved.shuffle
+        queue = saved.queue
+        currentIndex = saved.currentIndex
+        playbackOrder = saved.shuffle ? saved.order : Array(queue.indices)
+        activePrompt = saved.prompt
+        activeRecommendation = saved.recommendation
+        canRepeatRecommendation = saved.canRepeat
+        player.restore(queue[currentIndex], next: nextPlaybackIndex.map { queue[$0] }) { [api] track in
+            try await api.playbackURL(id: track.id)
+        }
     }
     private struct Archive: Codable { let sessions: [ListeningSession]; let feedback: [Feedback] }
     private func persist() {

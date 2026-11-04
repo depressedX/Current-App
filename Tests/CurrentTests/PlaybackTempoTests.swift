@@ -13,6 +13,36 @@ final class PlaybackTempoTests: XCTestCase {
     @MainActor private func audio() throws -> URL {
         try XCTUnwrap(Bundle.main.url(forResource: "demo-0", withExtension: "wav"))
     }
+    @MainActor func testRestartRestoresTempoAndMetadataWithoutResolvingAudio() async throws {
+        let preferences = defaults()
+        let first = PlaybackController(systemIntegration: false, tempoDefaults: preferences)
+        first.setTargetBPM(130)
+        first.stop()
+        let restored = PlaybackController(systemIntegration: false, tempoDefaults: preferences)
+        defer { restored.stop() }
+        var resolutions = 0
+        restored.originalBPMForTrack = { _ in 120 }
+        restored.restore(fixture(9), next: nil) { _ in
+            resolutions += 1
+            return try self.audio()
+        }
+        XCTAssertTrue(restored.tempo.enabled)
+        XCTAssertEqual(restored.tempo.targetBPM, 130)
+        XCTAssertEqual(restored.tempo.originalBPM, 120)
+        XCTAssertFalse(restored.playing)
+        XCTAssertEqual(restored.position, 0)
+        XCTAssertEqual(resolutions, 0)
+        XCTAssertEqual(restored.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Tempo 9")
+        restored.resume()
+        for _ in 0..<100 where resolutions == 0 { await Task.yield() }
+        XCTAssertEqual(resolutions, 1)
+        restored.setTempoEnabled(false)
+        let disabled = PlaybackController(systemIntegration: false, tempoDefaults: preferences)
+        XCTAssertFalse(disabled.tempo.enabled)
+        XCTAssertEqual(disabled.tempo.targetBPM, 130)
+        disabled.stop()
+    }
+
     @MainActor func testDragCancelsPendingHandoffAndReleaseFadesIntoPreparedAudio() async throws {
         let engine = TempoRecordingPlayer()
         let controller = PlaybackController(player: engine, systemIntegration: false, tempoDefaults: defaults())
