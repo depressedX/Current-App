@@ -7,6 +7,7 @@ struct CurrentApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .buttonStyle(DebugDefaultHitAreaStyle())
                 .environmentObject(store)
                 .tint(CurrentTheme.accent)
                 .task { await store.restoreSession() }

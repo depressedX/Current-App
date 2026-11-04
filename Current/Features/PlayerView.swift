@@ -101,7 +101,7 @@ struct PlayerView: View {
                                     }
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plain).debugHitArea()
                             .accessibilityLabel(store.player.playing ? "暂停" : "播放").accessibilityIdentifier("playerToggle")
                             Spacer(minLength: 4)
                             Button { store.next() } label: { Image(systemName: "forward.end.fill").font(CurrentTheme.Icon.control).frame(width: 48, height: 48) }
@@ -124,7 +124,7 @@ struct PlayerView: View {
                                     .frame(maxWidth: .infinity).frame(height: 28)
                                     .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plain).debugHitArea()
                             .accessibilityLabel(toolsExpanded ? "收起更多操作" : "展开更多操作")
                             .accessibilityHint("也可在封面上滑或下滑")
                             .accessibilityIdentifier("playerToolsToggle")
@@ -169,7 +169,7 @@ struct PlayerView: View {
                         .sensoryFeedback(.selection, trigger: toolsExpanded)
                         .sensoryFeedback(.success, trigger: store.liked(track))
                     }
-                    .buttonStyle(CurrentPressStyle())
+                    .buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
                     .frame(maxWidth: 480)
                     .padding(.horizontal, CurrentTheme.Space.page)
                     .padding(.vertical, spacing)
@@ -212,7 +212,7 @@ struct PlayerView: View {
             if showTempo {
                 ZStack(alignment: .bottom) {
                     Color.black.opacity(0.08).ignoresSafeArea()
-                        .onTapGesture { showTempo = false }
+                        .debugHitArea().onTapGesture { showTempo = false }
                         .accessibilityLabel("关闭播放速度")
                         .accessibilityAddTraits(.isButton)
                     PlaybackTempoView(player: store.player)
@@ -283,7 +283,7 @@ private struct PlayerFeedbackButton: View {
             .frame(maxWidth: .infinity, minHeight: 48)
             .contentShape(Rectangle())
         }
-        .buttonStyle(CurrentPressStyle())
+        .buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
     }
 }
 
@@ -311,7 +311,7 @@ private struct FeedbackView: View {
                         }
                         Spacer()
                     }.padding(.vertical, 10).contentShape(Rectangle()).foregroundStyle(.primary)
-                }.buttonStyle(CurrentRowStyle()).accessibilityIdentifier("feedback-\(kind.rawValue)")
+                }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle())).accessibilityIdentifier("feedback-\(kind.rawValue)")
             }
             Spacer(minLength: 0)
         }.padding(.horizontal, CurrentTheme.Space.page).frame(maxWidth: CurrentTheme.Layout.readableWidth).frame(maxWidth: .infinity).background(CurrentTheme.background)
@@ -342,6 +342,7 @@ private struct PlaybackScrubber: View {
                 .frame(maxHeight: .infinity)
                 .frame(width: geometry.size.width)
                 .contentShape(Rectangle())
+                .debugHitArea()
                 .gesture(DragGesture(minimumDistance: 0)
                     .updating($dragging) { _, state, _ in state = true }
                     .onChanged { value in
@@ -359,7 +360,7 @@ private struct PlaybackScrubber: View {
             }
             .frame(height: 44)
             .accessibilityRepresentation {
-                Slider(value: Binding(get: { position }, set: { player.seek($0) }), in: 0...max(1, duration))
+                Slider(value: Binding(get: { position }, set: { player.seek($0) }), in: 0...max(1, duration)).debugHitArea()
                     .disabled(duration <= 0)
                     .accessibilityLabel("播放进度")
                     .accessibilityValue("已播放 \(position.clock)，剩余 \(max(0, duration - position).clock)")

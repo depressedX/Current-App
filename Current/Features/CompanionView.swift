@@ -47,7 +47,7 @@ struct CompanionView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if companion.connected {
-                            Toggle("重新分析已有结果", isOn: $force)
+                            Toggle("重新分析已有结果", isOn: $force).debugHitArea()
                             Button("更新网易云授权") { companion.updateAuthorization() }
                             Button(companion.syncPaused ? "继续同步" : "暂停结果同步") { companion.setSyncPaused(!companion.syncPaused) }
                             Divider()
@@ -87,14 +87,14 @@ struct CompanionView: View {
             }
             if companion.connected {
                 if !companion.authorized {
-                    Button("更新网易云授权") { companion.updateAuthorization() }.buttonStyle(.bordered)
+                    Button("更新网易云授权") { companion.updateAuthorization() }.buttonStyle(.bordered).debugHitArea()
                 }
                 if companion.syncPaused {
-                    Button("继续同步 / 重试") { companion.setSyncPaused(false) }.buttonStyle(.bordered)
+                    Button("继续同步 / 重试") { companion.setSyncPaused(false) }.buttonStyle(.bordered).debugHitArea()
                 }
             } else {
                 Button(companion.discovering ? "正在寻找电脑…" : "寻找附近的 Mac") { companion.discover() }
-                    .buttonStyle(.bordered).disabled(companion.discovering || companion.connecting)
+                    .buttonStyle(.bordered).debugHitArea().disabled(companion.discovering || companion.connecting)
                 if !companion.paired {
                     ForEach(companion.computers) { computer in
                         Button { companion.requestPairing(with: computer) } label: {
@@ -102,7 +102,7 @@ struct CompanionView: View {
                                 Label(computer.name, systemImage: "desktopcomputer")
                                 Spacer(); Text("请求配对").font(CurrentTheme.TypeScale.secondary)
                             }.frame(minHeight: 44)
-                        }.buttonStyle(CurrentRowStyle()).disabled(companion.connecting)
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle())).disabled(companion.connecting)
                     }
                 } else {
                     if let computer = companion.discoveredPairedComputer {
@@ -128,7 +128,7 @@ struct CompanionView: View {
             }
             if failedCount > 0 {
                 Button("重试 \(failedCount) 首失败歌曲") { companion.retryFailed() }
-                    .buttonStyle(.bordered).disabled(!companion.connected || !companion.authorized)
+                    .buttonStyle(.bordered).debugHitArea().disabled(!companion.connected || !companion.authorized)
             }
             if !statusSummary.isEmpty {
                 Text(statusSummary)
@@ -184,7 +184,7 @@ struct CompanionView: View {
                                 Image(systemName: selected.contains(song.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selected.contains(song.id) ? CurrentTheme.accent : .secondary)
                             }.foregroundStyle(.primary).padding(.vertical, 10).contentShape(Rectangle())
-                        }.buttonStyle(CurrentRowStyle()).disabled(selected.count >= 1000 && !selected.contains(song.id))
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle())).disabled(selected.count >= 1000 && !selected.contains(song.id))
                     }
                 }
             }
@@ -207,7 +207,7 @@ private struct CompanionPairingSheet: View {
                 } else {
                     Text("输入 Mac 弹窗中显示的 4 位数字")
                         .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                    TextField("4 位配对码", text: $code)
+                    TextField("4 位配对码", text: $code).debugHitArea()
                         .keyboardType(.numberPad).textContentType(.oneTimeCode)
                         .font(.system(.largeTitle, design: .monospaced))
                         .padding(16).background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: 12))

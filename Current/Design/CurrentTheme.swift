@@ -143,7 +143,7 @@ struct PrimaryButton: View {
             .frame(maxWidth: .infinity, minHeight: 48)
             .foregroundStyle(.white)
             .background(enabled && !busy ? AnyShapeStyle(CurrentTheme.accentGradient) : AnyShapeStyle(Color.secondary.opacity(0.28)), in: Capsule())
-        }.buttonStyle(CurrentPressStyle()).disabled(busy)
+        }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle())).disabled(busy)
     }
 }
 
@@ -206,6 +206,40 @@ struct FeedbackChoiceButton: View {
             .background(selected ? CurrentTheme.accent.opacity(0.09) : Color.clear, in: Capsule())
             .animation(reduceMotion ? nil : CurrentTheme.Motion.press, value: selected)
             .contentShape(RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
-        }.buttonStyle(CurrentPressStyle())
+        }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
+    }
+}
+
+// Temporary visual audit. Set to false to hide all control highlights.
+enum HitAreaDebug {
+    #if DEBUG
+    static let enabled = false
+    #else
+    static let enabled = false
+    #endif
+}
+
+extension View {
+    func debugHitArea() -> some View {
+        overlay {
+            if HitAreaDebug.enabled {
+                Rectangle().fill(.cyan.opacity(0.18))
+                    .overlay(Rectangle().strokeBorder(.cyan.opacity(0.65), lineWidth: 1))
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+struct DebugHitAreaStyle<Base: ButtonStyle>: ButtonStyle {
+    let base: Base
+    func makeBody(configuration: Configuration) -> some View {
+        base.makeBody(configuration: configuration).debugHitArea()
+    }
+}
+
+struct DebugDefaultHitAreaStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(configuration).buttonStyle(.automatic).debugHitArea()
     }
 }

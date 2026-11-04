@@ -35,13 +35,13 @@ struct LibraryView: View {
                     Text("分析管理").font(CurrentTheme.TypeScale.emphasis)
                         .padding(.horizontal, 18).frame(minHeight: 44)
                         .background(CurrentTheme.surface, in: Capsule())
-                }.buttonStyle(CurrentPressStyle())
+                }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
             }
             if ProcessInfo.processInfo.isiOSAppOnMac {
                 HStack(spacing: 10) {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass").foregroundStyle(CurrentTheme.muted)
-                        TextField("搜索歌名、歌手", text: $search)
+                        TextField("搜索歌名、歌手", text: $search).debugHitArea()
                             .textFieldStyle(.plain)
                             .focused($desktopSearchFocused)
                             .submitLabel(.search)
@@ -50,7 +50,7 @@ struct LibraryView: View {
                         if !search.isEmpty {
                             Button { search = "" } label: {
                                 Image(systemName: "xmark.circle.fill").foregroundStyle(CurrentTheme.muted)
-                            }.buttonStyle(.plain).accessibilityLabel("清空搜索")
+                            }.buttonStyle(.plain).debugHitArea().accessibilityLabel("清空搜索")
                         }
                     }.padding(.horizontal, 14).frame(minHeight: 44)
                         .background(CurrentTheme.surface, in: Capsule())
@@ -68,7 +68,7 @@ struct LibraryView: View {
                     Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
                 }.padding(.horizontal, 16).frame(minHeight: 56)
                     .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
-            }.buttonStyle(CurrentPressStyle())
+            }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
             if songs.isEmpty {
                 ContentUnavailableView("音乐库还是空的", systemImage: "music.note.list", description: Text("在分析管理中加入歌曲，分析完成后会出现在这里。"))
                 if store.listener == nil && !store.demoMode {
@@ -91,7 +91,7 @@ struct LibraryView: View {
                                     Text("\(filtered.count) 首歌曲").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
                                 }
                             }.contentShape(Rectangle())
-                        }.buttonStyle(CurrentPressStyle())
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
                             .disabled(filtered.isEmpty)
                             .opacity(filtered.isEmpty ? 0.45 : 1)
                             .accessibilityIdentifier("libraryPlayAll")
@@ -104,7 +104,7 @@ struct LibraryView: View {
                                 .padding(.horizontal, 16).frame(minHeight: 44)
                                 .foregroundStyle(filters.count == 0 ? Color.primary : CurrentTheme.accent)
                                 .background(CurrentTheme.surface, in: Capsule())
-                        }.buttonStyle(CurrentPressStyle()).accessibilityIdentifier("libraryFilters")
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle())).accessibilityIdentifier("libraryFilters")
                     }
                     if filters.count > 0 {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -149,7 +149,7 @@ struct LibraryView: View {
                                 Spacer(minLength: 8)
                                 Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
                             }.padding(.vertical, 8).contentShape(Rectangle())
-                        }.buttonStyle(CurrentRowStyle())
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle()))
                     }
                 }
             }
@@ -173,7 +173,7 @@ struct LibraryView: View {
                 .padding(.horizontal, 12).frame(minHeight: 44)
                 .background(CurrentTheme.accent.opacity(0.08), in: Capsule())
                 .foregroundStyle(CurrentTheme.accent)
-        }.buttonStyle(CurrentPressStyle()).accessibilityLabel("移除筛选：" + title)
+        }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle())).accessibilityLabel("移除筛选：" + title)
     }
     private func songSummary(_ song: PoolSong) -> String {
         var parts: [String] = []
@@ -254,9 +254,9 @@ private struct LibraryFilterSheet: View {
                 Section("乐器") { choices(instruments, selection: $draft.instruments) }
                 Section {
                     HStack(spacing: 12) {
-                        TextField("最低", text: $draft.minimum).accessibilityLabel("最低 BPM")
+                        TextField("最低", text: $draft.minimum).accessibilityLabel("最低 BPM").debugHitArea()
                         Text("—").foregroundStyle(CurrentTheme.muted)
-                        TextField("最高", text: $draft.maximum).accessibilityLabel("最高 BPM")
+                        TextField("最高", text: $draft.maximum).accessibilityLabel("最高 BPM").debugHitArea()
                         Text("BPM").foregroundStyle(CurrentTheme.muted)
                     }.keyboardType(.numberPad).multilineTextAlignment(.center)
                         .padding(.vertical, 8)
@@ -298,7 +298,7 @@ private struct LibraryFilterSheet: View {
                                 .padding(.horizontal, 8)
                                 .foregroundStyle(selected ? Color.white : Color.primary)
                                 .background(selected ? CurrentTheme.accent : Color.primary.opacity(0.06), in: Capsule())
-                        }.buttonStyle(CurrentPressStyle())
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
                             .accessibilityAddTraits(selected ? [.isSelected] : [])
                     }
                 }.padding(.vertical, 4)
@@ -356,7 +356,7 @@ struct GenreHierarchyChoices: View {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(selected ? CurrentTheme.accent : CurrentTheme.muted)
             }.frame(minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain)
+        }.buttonStyle(.plain).debugHitArea()
             .accessibilityIdentifier("\(namespace):option:\(id)")
             .accessibilityLabel("\(group.title)，\(title)")
             .accessibilityAddTraits(selected ? [.isSelected] : [])

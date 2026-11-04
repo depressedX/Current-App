@@ -26,7 +26,7 @@ struct DiagnosticsView: View {
                 ForEach(LogCategory.allCases, id: \.self) { item in
                     Text(item.title).tag(Optional(item))
                 }
-            }.pickerStyle(.menu)
+            }.pickerStyle(.menu).debugHitArea()
             if filtered.isEmpty && !busy {
                 Text("暂无日志").font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
             }
@@ -51,7 +51,7 @@ struct DiagnosticsView: View {
                                 Text("\(error.domain) \(error.code)").font(CurrentTheme.TypeScale.caption).foregroundStyle(.red)
                             }
                         }.foregroundStyle(.primary).padding(.vertical, 6).contentShape(Rectangle())
-                    }.buttonStyle(CurrentRowStyle())
+                    }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle()))
                 }
             }
             Text("显示最近 200 条；导出包含全部保留日志及 App、系统和设备型号信息。分享前可先查看内容。")

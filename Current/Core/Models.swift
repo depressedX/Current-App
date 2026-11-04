@@ -24,6 +24,14 @@ struct UserPlaylist: Identifiable, Equatable {
     let artwork: URL?
 }
 
+struct UserAlbum: Identifiable, Equatable {
+    let id: Int
+    let title: String
+    let artist: String
+    let count: Int
+    let artwork: URL?
+}
+
 enum FeedbackKind: String, Codable, CaseIterable, Identifiable {
     // Current-only preference signals. Never translate these into NetEase favorite/like mutations.
     case fits, notNow, wrongMood, wrongStyle, tired, snooze, dislike

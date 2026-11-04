@@ -39,7 +39,7 @@ struct PlaybackTempoView: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).debugHitArea()
                     .tint(.primary).accessibilityLabel("还原原速")
                     .accessibilityIdentifier("resetTempo")
                 }
@@ -106,7 +106,8 @@ struct BPMRuler: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0)
+            .debugHitArea()
+                .gesture(DragGesture(minimumDistance: 0)
                 .updating(preview) { event, draft, _ in
                     guard original != nil else { return }
                     draft = target(at: event.location.x, width: width)

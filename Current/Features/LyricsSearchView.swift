@@ -17,7 +17,7 @@ struct LyricsSearchView: View {
         CurrentPage {
             Text("\(pool.lyricsCount) 首歌曲可检索").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
             HStack(spacing: 12) {
-                TextField("例如：分别、离别", text: $query)
+                TextField("例如：分别、离别", text: $query).debugHitArea()
                     .font(CurrentTheme.TypeScale.body).submitLabel(.search).focused($focused)
                     .onSubmit { search() }.accessibilityIdentifier("lyricsQuery")
                 Button("查找") { search() }

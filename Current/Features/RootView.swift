@@ -60,7 +60,7 @@ struct RootView: View {
                 Text(message).font(CurrentTheme.TypeScale.secondary)
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(.regularMaterial, in: Capsule()).padding(.top, 8)
-                    .onTapGesture { store.message = nil }
+                    .debugHitArea().onTapGesture { store.message = nil }
                     .task(id: message) {
                         try? await Task.sleep(for: .seconds(3))
                         if store.message == message { store.message = nil }
@@ -200,7 +200,7 @@ private struct MiniPlayerBar: View {
                     }.accessibilityLabel("下一首")
                 }
             }
-            .font(.system(size: 18)).foregroundStyle(.primary).buttonStyle(.plain)
+            .font(.system(size: 18)).foregroundStyle(.primary).buttonStyle(.plain).debugHitArea()
             .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 4)
         }
     }
@@ -229,9 +229,9 @@ struct ListenView: View {
                         .font(CurrentTheme.TypeScale.body).foregroundStyle(CurrentTheme.muted)
                         .padding(.top, 14)
                 }
-                .contentShape(Rectangle()).onTapGesture { composing = false }
+                .contentShape(Rectangle()).debugHitArea().onTapGesture { composing = false }
                 VStack(alignment: .leading, spacing: 0) {
-                    TextField("比如，阴郁的摇滚，别太激烈", text: $prompt, axis: .vertical)
+                    TextField("比如，阴郁的摇滚，别太激烈", text: $prompt, axis: .vertical).debugHitArea()
                         .font(CurrentTheme.TypeScale.body).lineSpacing(4).lineLimit(3...5)
                         .focused($composing).accessibilityIdentifier("promptInput")
                         .submitLabel(.done)
@@ -262,7 +262,7 @@ struct ListenView: View {
                         Spacer()
                         Button("先体验一下") { store.enterDemo() }
                             .foregroundStyle(CurrentTheme.muted).accessibilityIdentifier("enterDemo")
-                    }.font(CurrentTheme.TypeScale.body).buttonStyle(CurrentPressStyle())
+                    }.font(CurrentTheme.TypeScale.body).buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
                 }
                 if let issue = store.generationError {
                     VStack(alignment: .leading, spacing: CurrentTheme.Space.small) {
@@ -344,7 +344,7 @@ private struct ComposerButton: View {
             .frame(height: 46)
             .shadow(color: CurrentTheme.accent.opacity(enabled && !busy ? 0.35 : 0), radius: 14, y: 2)
         }
-        .buttonStyle(CurrentPressStyle())
+        .buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
         .opacity(enabled && !busy ? 1 : 0.55)
         .disabled(busy)
     }
@@ -450,7 +450,7 @@ struct TrackRow: View {
             .padding(.vertical, 8).padding(.horizontal, 8)
             .background(active ? CurrentTheme.surface : .clear, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.standard))
             .contentShape(Rectangle())
-        }.buttonStyle(CurrentRowStyle())
+        }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle()))
     }
 }
 
@@ -527,7 +527,7 @@ private struct SessionRow: View {
             }
             .padding(.vertical, 4)
             .contentShape(Rectangle())
-        }.buttonStyle(CurrentRowStyle())
+        }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle()))
         .accessibilityLabel("\(session.prompt)，\(session.tracks.count) 首")
         .accessibilityHint("替换当前歌单并开始播放")
     }
@@ -549,7 +549,7 @@ struct PlaybackOrderControl: View {
                 }
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).debugHitArea()
         .accessibilityLabel("播放模式")
         .accessibilityValue(store.shuffleEnabled ? "随机播放" : "顺序播放")
         .accessibilityHint(store.shuffleEnabled ? "切换到顺序播放" : "切换到随机播放")

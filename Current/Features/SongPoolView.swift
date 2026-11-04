@@ -31,13 +31,13 @@ struct SongPoolView: View {
                     Spacer(); Image(systemName: "chevron.right").foregroundStyle(CurrentTheme.muted)
                 }.foregroundStyle(.primary).padding(16)
                     .background(CurrentTheme.surface, in: RoundedRectangle(cornerRadius: CurrentTheme.Radius.card))
-            }.buttonStyle(CurrentPressStyle())
+            }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
             actions
             Picker("歌曲状态", selection: $selection) {
                 Text("待分析 \(pending.count)").tag(0)
                 Text("失败 \(failed.count)").tag(1)
                 Text("不可用 \(unavailable.count)").tag(2)
-            }.pickerStyle(.segmented)
+            }.pickerStyle(.segmented).debugHitArea()
             if selection == 2 && !unavailable.isEmpty {
                 Text("音源不可用的歌曲不参与歌单生成与播放。")
                     .font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
@@ -62,7 +62,7 @@ struct SongPoolView: View {
                         }.saturation(song.state == .unavailable ? 0 : 1)
                             .opacity(song.state == .unavailable ? 0.6 : 1)
                             .padding(.vertical, 8).contentShape(Rectangle())
-                    }.buttonStyle(CurrentRowStyle())
+                    }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle()))
                 }
             }
         }
@@ -87,7 +87,7 @@ struct SongPoolView: View {
     @ViewBuilder private var actions: some View {
         if pool.localRunning || (selection == 0 && pool.localPendingCount > 0) {
             Button(pool.localRunning ? "暂停本机分析" : "本机分析") { pool.localRunning ? pool.pause() : pool.resume() }
-                .buttonStyle(PoolActionStyle(prominent: true))
+                .buttonStyle(DebugHitAreaStyle(base: PoolActionStyle(prominent: true)))
                 .disabled(pool.loading || pool.failure != nil)
                 .accessibilityIdentifier("poolToggle")
             if selection == 0, let reason = pool.waitReason {
@@ -95,7 +95,7 @@ struct SongPoolView: View {
             }
         } else if selection == 1 && !failed.isEmpty {
             Button("重试失败项 · \(failed.count) 首") { pool.retryFailed() }
-                .buttonStyle(PoolActionStyle(prominent: true))
+                .buttonStyle(DebugHitAreaStyle(base: PoolActionStyle(prominent: true)))
                 .disabled(pool.loading || pool.failure != nil)
                 .accessibilityIdentifier("retryFailedAnalysis")
         }
@@ -121,7 +121,7 @@ struct SongPoolView: View {
         switch selection {
         case 1: return "分析失败的歌曲会保留在这里，可重试。"
         case 2: return "音源不可用的歌曲会保留在这里，不参与歌单生成与播放。"
-        default: return failed.isEmpty ? "从歌单加入歌曲。" : "从歌单加入歌曲，或重试失败的歌曲。"
+        default: return failed.isEmpty ? "从歌单或收藏专辑加入歌曲。" : "从歌单或收藏专辑加入歌曲，或重试失败的歌曲。"
         }
     }
     private func subtitle(_ song: PoolSong) -> String {
@@ -158,38 +158,99 @@ private struct PoolImportView: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var pool: SongPoolStore
     @Environment(\.dismiss) private var dismiss
+    @State private var source = 0
+    @State private var albums: [UserAlbum] = []
+    @State private var cachedAccount: String?
+    @State private var loadedSources = Set<Int>()
+    @State private var busy = false
+    @State private var failure: String?
     var body: some View {
         CurrentPage {
             if store.listener != nil {
-                if store.libraryLoading { ProgressView("读取歌单") }
-                if store.playlists.isEmpty && !store.libraryLoading {
-                    Text("暂无歌单").foregroundStyle(CurrentTheme.muted)
+                Picker("歌曲来源", selection: $source) {
+                    Text("歌单").tag(0)
+                    Text("收藏专辑").tag(1)
+                }.pickerStyle(.segmented).debugHitArea()
+                if busy { ProgressView(source == 0 ? "读取歌单" : "读取收藏专辑") }
+                if let failure {
+                    Text(failure).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
+                    Button("重试") { Task { await load() } }.disabled(busy)
                 }
-                ForEach(store.playlists) { playlist in
-                    NavigationLink { PoolPlaylistView(playlist: playlist) } label: {
-                        HStack(spacing: CurrentTheme.Space.row) {
-                            PlaylistArtwork(url: playlist.artwork).frame(width: 48, height: 48)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(playlist.title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary)
-                                Text("\(playlist.count) 首").font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure)
-                        }.padding(.vertical, 8)
+                if source == 0 {
+                    ForEach(store.playlists) { playlist in
+                        NavigationLink { PoolPlaylistView(playlist: playlist) } label: {
+                            row(playlist.title, subtitle: "\(playlist.count) 首", artwork: playlist.artwork)
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle()))
+                    }
+                    if store.playlists.isEmpty && !busy && failure == nil {
+                        Text("暂无歌单").foregroundStyle(CurrentTheme.muted)
+                    }
+                } else {
+                    ForEach(albums) { album in
+                        NavigationLink { PoolPlaylistView(playlist: nil, album: album) } label: {
+                            row(album.title, subtitle: [album.artist, album.count > 0 ? "\(album.count) 首" : ""].filter { !$0.isEmpty }.joined(separator: " · "), artwork: album.artwork)
+                        }.buttonStyle(DebugHitAreaStyle(base: CurrentRowStyle()))
+                    }
+                    if albums.isEmpty && !busy && failure == nil {
+                        Text("还没有收藏专辑").foregroundStyle(CurrentTheme.muted)
                     }
                 }
             } else if store.demoMode {
                 NavigationLink("原创演示曲库") { PoolPlaylistView(playlist: nil) }
             } else { Text("先连接网易云或进入演示空间").foregroundStyle(CurrentTheme.muted) }
         }
-        .navigationTitle("从歌单加入").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("加入歌曲").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } } }
-        .task { if store.listener != nil { await store.loadPlaylists() } }
+        .task(id: "\(pool.account):\(source)") { await load() }
+    }
+    private func row(_ title: String, subtitle: String, artwork: URL?) -> some View {
+        HStack(spacing: CurrentTheme.Space.row) {
+            PlaylistArtwork(url: artwork).frame(width: 48, height: 48)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(CurrentTheme.TypeScale.emphasis).foregroundStyle(.primary).lineLimit(1)
+                Text(subtitle).font(CurrentTheme.TypeScale.secondary).foregroundStyle(CurrentTheme.muted).lineLimit(1)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(CurrentTheme.Icon.disclosure).foregroundStyle(CurrentTheme.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+    private func load() async {
+        let account = pool.account, selectedSource = source
+        if cachedAccount != account {
+            albums = []; loadedSources = []; cachedAccount = account
+        }
+        failure = nil
+        guard !loadedSources.contains(selectedSource) else { busy = false; return }
+        busy = true
+        defer { if account == pool.account && selectedSource == source { busy = false } }
+        guard store.listener != nil else { return }
+        do {
+            if selectedSource == 0 {
+                await store.loadPlaylists()
+                try Task.checkCancellation()
+                guard account == pool.account && selectedSource == source else { return }
+                if store.playlists.isEmpty { failure = store.error }
+                if failure == nil { loadedSources.insert(selectedSource) }
+            } else {
+                let values = try await store.api.favoriteAlbums()
+                try Task.checkCancellation()
+                guard account == pool.account && selectedSource == source else { return }
+                albums = values
+                loadedSources.insert(selectedSource)
+            }
+        } catch is CancellationError {} catch {
+            guard account == pool.account && selectedSource == source && !Task.isCancelled else { return }
+            failure = error.localizedDescription
+        }
     }
 }
 
 private struct PoolPlaylistView: View {
     let playlist: UserPlaylist?
+    var album: UserAlbum? = nil
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var pool: SongPoolStore
     @State private var tracks: [Track] = []
@@ -200,7 +261,7 @@ private struct PoolPlaylistView: View {
     var body: some View {
         let added = Set(pool.songs.map { $0.track.id })
         CurrentPage {
-            if busy { ProgressView("读取完整歌单…") }
+            if busy { ProgressView(album == nil ? "读取完整歌单…" : "读取专辑歌曲…") }
             if let failure {
                 Text(failure).font(CurrentTheme.TypeScale.secondary).foregroundStyle(.red)
                 Button("重试") { Task { await load() } }
@@ -229,9 +290,9 @@ private struct PoolPlaylistView: View {
                         }
                     }
                 }
-            } else if !busy && failure == nil { Text("歌单中暂无可读取的歌曲").foregroundStyle(CurrentTheme.muted) }
+            } else if !busy && failure == nil { Text(album == nil ? "歌单中暂无可读取的歌曲" : "专辑中暂无可读取的歌曲").foregroundStyle(CurrentTheme.muted) }
         }
-        .navigationTitle(playlist?.title ?? "原创演示曲库").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(album?.title ?? playlist?.title ?? "原创演示曲库").navigationBarTitleDisplayMode(.inline)
         .task(id: pool.account) { await load() }
     }
     private func load() async {
@@ -240,7 +301,10 @@ private struct PoolPlaylistView: View {
         defer { if account == pool.account { busy = false } }
         do {
             let result: [Track]
-            if let playlist {
+            if let album {
+                guard store.listener != nil else { return }
+                result = try await store.api.tracks(albumID: album.id)
+            } else if let playlist {
                 guard store.listener != nil else { return }
                 result = try await store.api.tracks(playlistID: playlist.id, limit: nil)
             } else { result = DemoCatalog.tracks }
@@ -248,7 +312,7 @@ private struct PoolPlaylistView: View {
             guard account == pool.account else { return }
             var seen = Set<Int>()
             tracks = result.filter { seen.insert($0.id).inserted }; loadedAccount = account
-            if let playlist, tracks.count < playlist.count { notice = "部分歌曲暂不可读取，已显示 \(tracks.count) 首。" }
+            if let expected = album?.count ?? playlist?.count, tracks.count < expected { notice = "部分歌曲暂不可读取，已显示 \(tracks.count) 首。" }
         } catch is CancellationError {} catch {
             guard account == pool.account else { return }
             failure = "读取失败，请检查网络和登录状态"
@@ -256,7 +320,7 @@ private struct PoolPlaylistView: View {
     }
     private func add(_ selected: [Track]) {
         guard loadedAccount == pool.account else { return }
-        let count = pool.enqueue(selected, source: playlist?.title ?? "原创演示曲库")
+        let count = pool.enqueue(selected, source: album?.title ?? playlist?.title ?? "原创演示曲库")
         notice = count > 0 ? "已加入 \(count) 首" : "歌曲已在池中"
     }
 }
@@ -314,7 +378,7 @@ struct PoolSongDetail: View {
                         .foregroundStyle(CurrentTheme.accent)
                         .background(CurrentTheme.accent.opacity(0.08), in: Capsule())
                         .overlay(Capsule().strokeBorder(CurrentTheme.accent.opacity(0.18)))
-                }.buttonStyle(CurrentPressStyle())
+                }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
             }
         }
         .navigationTitle("歌曲详情").navigationBarTitleDisplayMode(.inline)
@@ -412,7 +476,7 @@ struct PoolSongDetail: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .foregroundStyle(.primary)
                 .background(.primary.opacity(0.06), in: Capsule())
-        }.buttonStyle(CurrentPressStyle())
+        }.buttonStyle(DebugHitAreaStyle(base: CurrentPressStyle()))
     }
     private func field(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {

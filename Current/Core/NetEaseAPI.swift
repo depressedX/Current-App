@@ -48,6 +48,44 @@ final class NetEaseAPI {
                                 artwork: Self.artworkURL(p["coverImgUrl"] as? String ?? p["picUrl"] as? String))
         }
     }
+    func favoriteAlbums() async throws -> [UserAlbum] {
+        var albums: [UserAlbum] = []
+        var seen = Set<Int>()
+        var offset = 0
+        let limit = 100
+        while true {
+            try Task.checkCancellation()
+            let body = try await request("/album/sublist", ["limit": limit, "offset": offset, "total": true])
+            guard let values = body["data"] as? [[String: Any]] else {
+                throw CurrentError.message("未能读取收藏专辑，请重试。")
+            }
+            let page = values.compactMap { value -> UserAlbum? in
+                guard let id = value["id"] as? Int else { return nil }
+                let artists = value["artists"] as? [[String: Any]]
+                    ?? (value["artist"] as? [String: Any]).map { [$0] } ?? []
+                return UserAlbum(id: id, title: value["name"] as? String ?? "专辑",
+                                 artist: artists.compactMap { $0["name"] as? String }.joined(separator: " / "),
+                                 count: value["size"] as? Int ?? 0,
+                                 artwork: Self.artworkURL(value["picUrl"] as? String ?? value["cover"] as? String))
+            }
+            let fresh = page.filter { seen.insert($0.id).inserted }
+            albums.append(contentsOf: fresh)
+            offset += values.count
+            let more = body["hasMore"] as? Bool
+            if more == false || (more == nil && values.count < limit) { return albums }
+            guard !values.isEmpty, !fresh.isEmpty else {
+                throw CurrentError.message("收藏专辑列表未能完整读取，请重试。")
+            }
+        }
+    }
+    func tracks(albumID: Int) async throws -> [Track] {
+        let body = try await request("/v1/album/\(albumID)")
+        guard let songs = body["songs"] as? [[String: Any]] else {
+            throw CurrentError.message("未能读取专辑歌曲，请重试。")
+        }
+        return Self.parseTracks(songs)
+    }
+
     func tracks(playlistID: Int, limit: Int? = 60) async throws -> [Track] {
         let body = try await request("/v6/playlist/detail", ["id": playlistID, "n": 100, "s": 0])
         let playlist = body["playlist"] as? [String: Any] ?? [:]
@@ -74,12 +112,12 @@ final class NetEaseAPI {
     static func parseTracks(_ values: [[String: Any]]) -> [Track] {
         values.compactMap { song in
             guard let id = song["id"] as? Int else { return nil }
-            let album = song["al"] as? [String: Any] ?? [:]
-            let artists = song["ar"] as? [[String: Any]] ?? []
+            let album = song["al"] as? [String: Any] ?? song["album"] as? [String: Any] ?? [:]
+            let artists = song["ar"] as? [[String: Any]] ?? song["artists"] as? [[String: Any]] ?? []
             return Track(id: id, title: song["name"] as? String ?? "未知歌曲",
                          artist: artists.compactMap { $0["name"] as? String }.joined(separator: " / "),
                          album: album["name"] as? String ?? "", artwork: Self.artworkURL(album["picUrl"] as? String),
-                         duration: ((song["dt"] as? NSNumber)?.doubleValue ?? 0) / 1000, demoIndex: nil)
+                         duration: ((song["dt"] as? NSNumber ?? song["duration"] as? NSNumber)?.doubleValue ?? 0) / 1000, demoIndex: nil)
         }
     }
     func lyrics(id: Int) async throws -> LyricsDocument {

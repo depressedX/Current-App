@@ -14,7 +14,7 @@ struct AISettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section {
-                SecureField(store.deepSeekConfigured ? "输入新的个人 Key 以替换" : "填写个人 DeepSeek Key", text: $keyInput)
+                SecureField(store.deepSeekConfigured ? "输入新的个人 Key 以替换" : "填写个人 DeepSeek Key", text: $keyInput).debugHitArea()
                     .textContentType(.password).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .disabled(testing).accessibilityIdentifier("deepSeekKeyInput")
                 Text(store.deepSeekConfigured ? "已保存个人 Key" : "尚未配置个人 Key")

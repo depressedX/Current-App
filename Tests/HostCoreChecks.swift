@@ -2,12 +2,16 @@ import Foundation
 
 final class MockHTTP: URLProtocol {
     static var response: [String: Any] = [:]
+    static var responses: [[String: Any]] = []
+    static var paths: [String] = []
     static var headers: [String: String] = [:]
     static var delay: Double = 0
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let data = try! JSONSerialization.data(withJSONObject: Self.response)
+        Self.paths.append(request.url!.path)
+        let body = Self.responses.isEmpty ? Self.response : Self.responses.removeFirst()
+        let data = try! JSONSerialization.data(withJSONObject: body)
         let headers = Self.headers
         DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!
@@ -112,6 +116,33 @@ struct HostCoreChecks {
         do { _ = try await api.playbackURL(id: 42); fatalError("endpoint 404 must remain retryable") }
         catch CurrentError.message {}
         print("PASS unavailable songs and trial restrictions are distinct from malformed/service/endpoint errors")
+        MockHTTP.paths = []
+        MockHTTP.responses = [
+            ["code": 200, "data": [["id": 1, "name": "First", "size": 2, "artists": [["name": "A"]], "picUrl": "http://p1.music.126.net/a.jpg"]], "hasMore": true],
+            ["code": 200, "data": [["id": 1], ["id": 2, "name": "Second", "artist": ["name": "B"]]], "hasMore": false]
+        ]
+        let albums = try await api.favoriteAlbums()
+        precondition(albums.map(\.id) == [1, 2] && albums.map(\.artist) == ["A", "B"])
+        precondition(albums[0].count == 2 && albums[0].artwork?.scheme == "https")
+        precondition(MockHTTP.paths == ["/weapi/album/sublist", "/weapi/album/sublist"])
+        MockHTTP.response = ["code": 200, "songs": [["id": 3, "name": "Song", "duration": 120000,
+            "artists": [["name": "A"]], "album": ["name": "First", "picUrl": "http://p1.music.126.net/a.jpg"]]]]
+        let albumTracks = try await api.tracks(albumID: 1)
+        precondition(albumTracks.count == 1 && albumTracks[0].duration == 120 && albumTracks[0].album == "First" && albumTracks[0].artist == "A")
+        precondition(MockHTTP.paths.last == "/weapi/v1/album/1")
+        MockHTTP.response = ["code": 200, "data": [], "hasMore": false]
+        let emptyAlbums = try await api.favoriteAlbums()
+        precondition(emptyAlbums.isEmpty)
+        MockHTTP.response = ["code": 200]
+        do { _ = try await api.tracks(albumID: 1); fatalError("missing songs must fail") }
+        catch CurrentError.message {}
+        MockHTTP.response = ["code": 301]
+        do { _ = try await api.favoriteAlbums(); fatalError("expired album session must fail") }
+        catch CurrentError.expired {}
+        MockHTTP.response = ["code": 200, "data": [], "hasMore": true]
+        do { _ = try await api.favoriteAlbums(); fatalError("non-progressing pagination must fail") }
+        catch CurrentError.message {}
+        print("PASS favorite album pagination, deduplication, album tracks, empty/malformed/expired responses")
         func wiki(_ text: String, kind: String = "bpm", title: String = "BPM") -> [String: Any] {
             ["code": 200, "data": ["blocks": [["creatives": [["creativeType": kind,
                 "uiElement": ["mainTitle": ["title": title], "textLinks": [["text": text]]]]]]]]]
