@@ -2,6 +2,8 @@ import Foundation
 
 @MainActor
 final class NetEaseAPI {
+    // Match the desktop protocol profile used by the PC EAPI endpoints (Kumone).
+    private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     private var cookies: [String: String]
     private var epoch = UUID()
     private let ephemeral: Bool
@@ -207,6 +209,18 @@ final class NetEaseAPI {
         guard let url = parts.url, url.scheme == "https", url.host != nil else { throw CurrentError.message("播放地址无效。") }
         return url
     }
+    /// Build only protocol fields and authentication cookies, not the entire web cookie jar.
+    /// requestId must vary per request; deviceId is an application identifier, never a hardware ID.
+    static func eapiHeader(cookies: [String: String], now: Date = Date()) -> [String: String] {
+        var header: [String: String] = [
+            "os": "pc", "appver": "3.1.17", "osver": "Version 14.0 (Build 23A344)",
+            "deviceId": "current", "requestId": String(Int.random(in: 20_000_000...30_000_000)),
+            "clientSign": "", "versioncode": "140", "buildver": String(Int(now.timeIntervalSince1970)),
+            "resolution": "1920x1080", "channel": ""
+        ]
+        for key in ["MUSIC_U", "__csrf"] { header[key] = cookies[key] }
+        return header
+    }
     func request(_ path: String, _ payload: [String: Any] = [:], eapi: Bool = false,
                  accepted: Set<Int> = [200], cookieOverride: [String: String]? = nil, absorb: Bool = true, timeout: TimeInterval? = nil) async throws -> [String: Any] {
         let span = UUID(), began = Date(), operation = LogOperation.api(path)
@@ -217,11 +231,7 @@ final class NetEaseAPI {
             var body = payload
             let jar = cookieOverride ?? cookies
             body["csrf_token"] = jar["__csrf"] ?? ""
-            if eapi {
-                var header = jar
-                header["os"] = "pc"; header["appver"] = "3.1.17"
-                body["header"] = header
-            }
+            if eapi { body["header"] = Self.eapiHeader(cookies: jar) }
             let json = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
             let fields = try eapi ? NetEaseCrypto.eapi(path: path, payload: json) : NetEaseCrypto.weapi(json)
             let host = eapi ? "https://interface.music.163.com/eapi" : "https://music.163.com/weapi"
@@ -231,7 +241,7 @@ final class NetEaseAPI {
             request.httpMethod = "POST"; request.httpBody = NetEaseCrypto.form(fields)
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
-            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+            request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
             var requestCookies = jar
             requestCookies["os"] = "pc"; requestCookies["appver"] = "3.1.17"
             request.setValue(requestCookies.map { "\($0.key)=\($0.value)" }.joined(separator: "; "), forHTTPHeaderField: "Cookie")

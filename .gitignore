@@ -1,4 +1,7 @@
 build/
+
+# Local device diagnostics; never include in commits.
+.local/
 DerivedData/
 *.xcuserstate
 xcuserdata/

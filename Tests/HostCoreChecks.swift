@@ -4,12 +4,14 @@ final class MockHTTP: URLProtocol {
     static var response: [String: Any] = [:]
     static var responses: [[String: Any]] = []
     static var paths: [String] = []
+    static var lastRequest: URLRequest?
     static var headers: [String: String] = [:]
     static var delay: Double = 0
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.paths.append(request.url!.path)
+        Self.lastRequest = request
         let body = Self.responses.isEmpty ? Self.response : Self.responses.removeFirst()
         let data = try! JSONSerialization.data(withJSONObject: body)
         let headers = Self.headers
@@ -67,6 +69,16 @@ struct HostCoreChecks {
         let repeatedCrypto = try NetEaseCrypto.weapi(Data("{}".utf8))
         precondition(crypto["encSecKey"]?.count == 256 && crypto == repeatedCrypto)
         print("PASS request encoding and deterministic encryption")
+        let clientHeader = NetEaseAPI.eapiHeader(cookies: ["MUSIC_U": "fixture", "__csrf": "csrf", "os": "ios", "unrelated": "omit"], now: Date(timeIntervalSince1970: 123))
+        precondition(clientHeader["os"] == "pc" && clientHeader["appver"] == "3.1.17")
+        precondition(clientHeader["buildver"] == "123" && clientHeader["deviceId"] == "current")
+        precondition(clientHeader["MUSIC_U"] == "fixture" && clientHeader["__csrf"] == "csrf" && clientHeader["unrelated"] == nil)
+        for key in ["osver", "clientSign", "versioncode", "resolution", "channel", "requestId"] {
+            precondition(clientHeader[key] != nil)
+        }
+        let requestIDs = Set((0..<16).compactMap { _ in NetEaseAPI.eapiHeader(cookies: [:])["requestId"] })
+        precondition(requestIDs.count > 1 && requestIDs.allSatisfy { (20_000_000...30_000_000).contains(Int($0) ?? 0) })
+        print("PASS complete EAPI profile, authentication allowlist and per-request IDs")
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockHTTP.self]
         let api = NetEaseAPI(ephemeral: true, configuration: config)
@@ -96,6 +108,15 @@ struct HostCoreChecks {
         MockHTTP.response = ["code": 200, "data": [["url": "http://example.com/audio.mp3", "freeTrialInfo": NSNull()]]]
         let url = try await api.playbackURL(id: 42)
         precondition(url.scheme == "https")
+        precondition(MockHTTP.lastRequest?.url?.path == "/eapi/song/enhance/player/url/v1")
+        precondition(MockHTTP.lastRequest?.value(forHTTPHeaderField: "User-Agent")?.contains("Macintosh") == true)
+        precondition(MockHTTP.lastRequest?.value(forHTTPHeaderField: "Cookie")?.contains("os=pc") == true)
+        MockHTTP.paths = []
+        MockHTTP.response = ["code": -460, "message": "检测到您的网络环境存在风险，请稍后再试"]
+        do { _ = try await api.playbackURL(id: 42); fatalError("risk control must stop playback") }
+        catch CurrentError.message(let text) { precondition(text.contains("风险")) }
+        precondition(MockHTTP.paths.count == 1 && !api.hasCredentials)
+        print("PASS coherent PC transport profile; -460 is surfaced without retries or unavailable classification")
         MockHTTP.response = ["code": 200, "data": [["url": NSNull()]]]
         do { _ = try await api.playbackURL(id: 42); fatalError("missing URL must fail") }
         catch CurrentError.unavailable(.noResource) {}
